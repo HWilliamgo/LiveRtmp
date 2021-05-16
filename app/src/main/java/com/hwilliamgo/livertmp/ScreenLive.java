@@ -11,7 +11,7 @@ public class ScreenLive extends Thread {
     private MediaProjection mediaProjection;
 
     static {
-        System.loadLibrary("native-lib");
+        System.loadLibrary("hw-rtmp");
     }
 // 队列
     private LinkedBlockingQueue<RTMPPackage> queue = new LinkedBlockingQueue<>();

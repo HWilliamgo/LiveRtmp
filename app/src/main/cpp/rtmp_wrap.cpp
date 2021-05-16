@@ -1,23 +1,53 @@
+#include "rtmp_wrap.h"
 #include <jni.h>
 #include <string>
 #include <android/log.h>
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,"David",__VA_ARGS__)
-extern "C"{
 #include  "librtmp/rtmp.h"
+
+
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,"David",__VA_ARGS__)
+
+static Live *globalLive = nullptr;
+
+int connect(const char *url) {
+    int ret;
+    int urlLen = strlen(url + 1);
+    char *inputUrl = new char[urlLen];
+    memset(inputUrl, 0, urlLen + 1);
+    memcpy(inputUrl, url, urlLen + 1);
+
+    do {
+//        实例化
+        globalLive = (Live *) malloc(sizeof(Live));
+        memset(globalLive, 0, sizeof(Live));
+
+        globalLive->rtmp = RTMP_Alloc();
+        RTMP_Init(globalLive->rtmp);
+        globalLive->rtmp->Link.timeout = 10;
+        if (strlen(inputUrl) == 0) {
+            LOGI("input url is empty");
+            return false;
+        }
+        LOGI("connect %s", inputUrl);
+        if (!(ret = RTMP_SetupURL(globalLive->rtmp, inputUrl))) break;
+        RTMP_EnableWrite(globalLive->rtmp);
+        LOGI("RTMP_Connect");
+        if (!(ret = RTMP_Connect(globalLive->rtmp, 0))) break;
+        LOGI("RTMP_ConnectStream ");
+        if (!(ret = RTMP_ConnectStream(globalLive->rtmp, 0))) break;
+        LOGI("connect success");
+    } while (false);
+// sps  pps javabean
+    if (!ret && globalLive) {
+        free(globalLive);
+        globalLive = nullptr;
+    }
+    return ret;
 }
-typedef  struct {
 
 
-    RTMP *rtmp;
-    int16_t sps_len;
-    int8_t *sps;
-//
-    int16_t pps_len;
-    int8_t *pps;
-} Live;
-Live *live = NULL;
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408681B4284D4  0000000168  EE 06 F2 C0
-void prepareVideo(int8_t *data, int len, Live *live) {
+static void initSpsPps(int8_t *data, int len, Live *live) {
 
     for (int i = 0; i < len; i++) {
 //        防止越界
@@ -25,7 +55,7 @@ void prepareVideo(int8_t *data, int len, Live *live) {
             if (data[i] == 0x00 && data[i + 1] == 0x00
                 && data[i + 2] == 0x00
                 && data[i + 3] == 0x01) {
-                if (data[i + 4]  == 0x68) {
+                if (data[i + 4] == 0x68) {
                     live->sps_len = i - 4;
 //                    new一个数组
                     live->sps = static_cast<int8_t *>(malloc(live->sps_len));
@@ -47,7 +77,8 @@ void prepareVideo(int8_t *data, int len, Live *live) {
         }
     }
 }
-RTMPPacket *createVideoPackage(Live *live) {
+
+static RTMPPacket *createVideoPackage(Live *live) {
 //sps  pps 的 packaet
     int body_size = 16 + live->sps_len + live->pps_len;
     RTMPPacket *packet = (RTMPPacket *) malloc(sizeof(RTMPPacket));
@@ -77,7 +108,7 @@ RTMPPacket *createVideoPackage(Live *live) {
     packet->m_body[i++] = live->sps_len & 0xff;
 //    拷贝sps的内容
     memcpy(&packet->m_body[i], live->sps, live->sps_len);
-    i +=live->sps_len;
+    i += live->sps_len;
 //    pps
     packet->m_body[i++] = 0x01; //pps number
 //rtmp 协议
@@ -99,7 +130,8 @@ RTMPPacket *createVideoPackage(Live *live) {
     packet->m_nInfoField2 = live->rtmp->m_stream_id;
     return packet;
 }
-RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Live *live) {
+
+static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Live *live) {
     buf += 4;
 //长度
     RTMPPacket *packet = (RTMPPacket *) malloc(sizeof(RTMPPacket));
@@ -108,11 +140,10 @@ RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Live *live)
     RTMPPacket_Alloc(packet, body_size);
 
 
-
     if (buf[0] == 0x65) {
         packet->m_body[0] = 0x17;
         LOGI("发送关键帧 data");
-    } else{
+    } else {
         packet->m_body[0] = 0x27;
         LOGI("发送非关键帧 data");
     }
@@ -139,20 +170,23 @@ RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Live *live)
     packet->m_nInfoField2 = live->rtmp->m_stream_id;
     return packet;
 }
-int sendPacket(RTMPPacket *packet) {
-    int r = RTMP_SendPacket(live->rtmp, packet, 1);
+
+static int sendPacket(RTMPPacket *packet) {
+    int r = RTMP_SendPacket(globalLive->rtmp, packet, 1);
     RTMPPacket_Free(packet);
     free(packet);
     return r;
 }
+
+
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408081B4284D4  0000000168 EE 06 F2 C0
 int sendVideo(int8_t *buf, int len, long tms) {
     int ret = 0;
     if (buf[4] == 0x67) {
-//        缓存sps 和pps 到全局遍历 不需要推流
-        if (live && (!live->pps || !live->sps)) {
+//        缓存sps 和pps 到全局变量 不需要推流
+        if (globalLive && (!globalLive->pps || !globalLive->sps)) {
 //缓存 没有推流
-            prepareVideo(buf, len, live);
+            initSpsPps(buf, len, globalLive);
         }
         return ret;
     }
@@ -160,54 +194,12 @@ int sendVideo(int8_t *buf, int len, long tms) {
     if (buf[4] == 0x65) {//关键帧
 //         推两个
 //sps 和 ppps 的paclet  发送sps pps
-        RTMPPacket *packet = createVideoPackage(live);
+        RTMPPacket *packet = createVideoPackage(globalLive);
         sendPacket(packet);
 //        发送I帧
     }
 //    两个   I帧  0x17  B P 0x27
-    RTMPPacket *packet2 = createVideoPackage(buf, len, tms, live);
+    RTMPPacket *packet2 = createVideoPackage(buf, len, tms, globalLive);
     ret = sendPacket(packet2);
-    return ret;
-}
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_com_maniu_rtmpbibili_ScreenLive_connect(JNIEnv *env, jobject thiz, jstring url_) {
-
-    const char *url = env->GetStringUTFChars(url_, 0);
-//    链接   服务器   重试几次
-    int ret;
-    do {
-//        实例化
-        live = (Live*)malloc(sizeof(Live));
-        memset(live, 0, sizeof(Live));
-
-        live->rtmp = RTMP_Alloc();
-        RTMP_Init(live->rtmp);
-        live->rtmp->Link.timeout = 10;
-        LOGI("connect %s", url);
-        if (!(ret = RTMP_SetupURL(live->rtmp, (char*)url))) break;
-        RTMP_EnableWrite(live->rtmp);
-        LOGI("RTMP_Connect");
-        if (!(ret = RTMP_Connect(live->rtmp, 0))) break;
-        LOGI("RTMP_ConnectStream ");
-        if (!(ret = RTMP_ConnectStream(live->rtmp, 0))) break;
-        LOGI("connect success");
-    } while (0);
-// sps  pps javabean
-    if (!ret && live) {
-        free(live);
-        live = nullptr;
-    }
-    env->ReleaseStringUTFChars(url_, url);
-    return ret;
-
-}extern "C"
-JNIEXPORT jboolean JNICALL
-Java_com_maniu_rtmpbibili_ScreenLive_sendData(JNIEnv *env, jobject thiz, jbyteArray data_, jint len,
-                                              jlong tms) {
-    int ret;
-    jbyte *data = env->GetByteArrayElements(data_, NULL);
-    ret = sendVideo(data, len, tms);
-    env->ReleaseByteArrayElements(data_, data, 0);
     return ret;
 }
