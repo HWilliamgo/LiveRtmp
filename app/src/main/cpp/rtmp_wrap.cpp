@@ -7,47 +7,55 @@
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,"David",__VA_ARGS__)
 
-static Live *globalLive = nullptr;
+static void freeGlobalLive();
 
-int connect(const char *url) {
-    int ret;
-    int urlLen = strlen(url + 1);
-    char *inputUrl = new char[urlLen];
-    memset(inputUrl, 0, urlLen + 1);
-    memcpy(inputUrl, url, urlLen + 1);
+static RtmpWrap::Live *globalLive = nullptr;
 
-    do {
-//        实例化
-        globalLive = (Live *) malloc(sizeof(Live));
-        memset(globalLive, 0, sizeof(Live));
+int RtmpWrap::connect(const char *url) {
+    //实例化
+    globalLive = (Live *) malloc(sizeof(Live));
+    memset(globalLive, 0, sizeof(Live));
 
-        globalLive->rtmp = RTMP_Alloc();
-        RTMP_Init(globalLive->rtmp);
-        globalLive->rtmp->Link.timeout = 10;
-        if (strlen(inputUrl) == 0) {
-            LOGI("input url is empty");
-            return false;
-        }
-        LOGI("connect %s", inputUrl);
-        if (!(ret = RTMP_SetupURL(globalLive->rtmp, inputUrl))) break;
-        RTMP_EnableWrite(globalLive->rtmp);
-        LOGI("RTMP_Connect");
-        if (!(ret = RTMP_Connect(globalLive->rtmp, 0))) break;
-        LOGI("RTMP_ConnectStream ");
-        if (!(ret = RTMP_ConnectStream(globalLive->rtmp, 0))) break;
-        LOGI("connect success");
-    } while (false);
-// sps  pps javabean
-    if (!ret && globalLive) {
+    globalLive->rtmp = RTMP_Alloc();
+    RTMP_Init(globalLive->rtmp);
+    globalLive->rtmp->Link.timeout = 10;
+    if (!url || strlen(url) == 0) {
+        LOGI("input url is empty");
+        return false;
+    }
+    LOGI("rtmp_wrap_connect %s", url);
+    if (!RTMP_SetupURL(globalLive->rtmp, (char *) url)) {
+        LOGI("RTMP_SetupURL failed");
+        freeGlobalLive();
+        return -1;
+    }
+    RTMP_EnableWrite(globalLive->rtmp);
+    LOGI("RTMP_Connect");
+    if (!RTMP_Connect(globalLive->rtmp, nullptr)) {
+        LOGI("RTMP_Connect failed");
+        freeGlobalLive();
+        return -1;
+    }
+    LOGI("RTMP_ConnectStream ");
+    if (!RTMP_ConnectStream(globalLive->rtmp, 0)) {
+        LOGI("RTMP_ConnectStream failed");
+        freeGlobalLive();
+        return -1;
+    }
+    LOGI("rtmp_wrap_connect success");
+    return 1;
+}
+
+static void freeGlobalLive() {
+    if (globalLive) {
         free(globalLive);
         globalLive = nullptr;
     }
-    return ret;
 }
 
 
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408681B4284D4  0000000168  EE 06 F2 C0
-static void initSpsPps(int8_t *data, int len, Live *live) {
+static void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
 
     for (int i = 0; i < len; i++) {
 //        防止越界
@@ -78,7 +86,7 @@ static void initSpsPps(int8_t *data, int len, Live *live) {
     }
 }
 
-static RTMPPacket *createVideoPackage(Live *live) {
+static RTMPPacket *createVideoPackage(RtmpWrap::Live *live) {
 //sps  pps 的 packaet
     int body_size = 16 + live->sps_len + live->pps_len;
     RTMPPacket *packet = (RTMPPacket *) malloc(sizeof(RTMPPacket));
@@ -131,7 +139,7 @@ static RTMPPacket *createVideoPackage(Live *live) {
     return packet;
 }
 
-static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Live *live) {
+static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, RtmpWrap::Live *live) {
     buf += 4;
 //长度
     RTMPPacket *packet = (RTMPPacket *) malloc(sizeof(RTMPPacket));
@@ -180,7 +188,7 @@ static int sendPacket(RTMPPacket *packet) {
 
 
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408081B4284D4  0000000168 EE 06 F2 C0
-int sendVideo(int8_t *buf, int len, long tms) {
+int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
     int ret = 0;
     if (buf[4] == 0x67) {
 //        缓存sps 和pps 到全局变量 不需要推流

@@ -17,7 +17,7 @@ public class MainActivity extends AppCompatActivity {
     private MediaProjectionManager mediaProjectionManager;
     private MediaProjection mediaProjection;
     ScreenLive screenLive;
-    String url = "rtmp://sendtc3a.douyu.com/live/6458908rdXEGQcTb?wsSecret=7cfbe9255a6037560ba3fb8c2d68a97e&wsTime=6097dab5&wsSeek=off&wm=0&tw=0&roirecognition=0&record=flv&origin=tct";
+    String url = "rtmp://sendtc3a.douyu.com/live/6458908rW5AYHdSb?wsSecret=008a618b0d9224641d0f889e0e3e6e52&wsTime=60dc5387&wsSeek=off&wm=0&tw=0&roirecognition=0&record=flv&origin=tct";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
