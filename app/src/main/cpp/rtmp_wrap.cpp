@@ -3,9 +3,7 @@
 #include <string>
 #include <android/log.h>
 #include  "librtmp/rtmp.h"
-
-
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,"David",__VA_ARGS__)
+#include "log/include/log_abs.h"
 
 static void freeGlobalLive();
 
@@ -20,29 +18,29 @@ int RtmpWrap::connect(const char *url) {
     RTMP_Init(globalLive->rtmp);
     globalLive->rtmp->Link.timeout = 10;
     if (!url || strlen(url) == 0) {
-        LOGI("input url is empty");
+        MyLog::v("input url is empty");
         return false;
     }
-    LOGI("rtmp_wrap_connect %s", url);
+    MyLog::v("rtmp_wrap_connect %s", url);
     if (!RTMP_SetupURL(globalLive->rtmp, (char *) url)) {
-        LOGI("RTMP_SetupURL failed");
+        MyLog::v("RTMP_SetupURL failed");
         freeGlobalLive();
         return -1;
     }
     RTMP_EnableWrite(globalLive->rtmp);
-    LOGI("RTMP_Connect");
+    MyLog::v("RTMP_Connect");
     if (!RTMP_Connect(globalLive->rtmp, nullptr)) {
-        LOGI("RTMP_Connect failed");
+        MyLog::v("RTMP_Connect failed");
         freeGlobalLive();
         return -1;
     }
-    LOGI("RTMP_ConnectStream ");
+    MyLog::v("RTMP_ConnectStream ");
     if (!RTMP_ConnectStream(globalLive->rtmp, 0)) {
-        LOGI("RTMP_ConnectStream failed");
+        MyLog::v("RTMP_ConnectStream failed");
         freeGlobalLive();
         return -1;
     }
-    LOGI("rtmp_wrap_connect success");
+    MyLog::v("rtmp_wrap_connect success");
     return 1;
 }
 
@@ -77,7 +75,7 @@ static void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
 //                    rtmp  协议
 
                     memcpy(live->pps, data + 4 + live->sps_len + 4, live->pps_len);
-                    LOGI("sps:%d pps:%d", live->sps_len, live->pps_len);
+                    MyLog::v("sps:%d pps:%d", live->sps_len, live->pps_len);
                     break;
                 }
             }
@@ -150,10 +148,10 @@ static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Rtmp
 
     if (buf[0] == 0x65) {
         packet->m_body[0] = 0x17;
-        LOGI("发送关键帧 data");
+        MyLog::v("发送关键帧 data");
     } else {
         packet->m_body[0] = 0x27;
-        LOGI("发送非关键帧 data");
+        MyLog::v("发送非关键帧 data");
     }
 //    固定的大小
     packet->m_body[1] = 0x01;
