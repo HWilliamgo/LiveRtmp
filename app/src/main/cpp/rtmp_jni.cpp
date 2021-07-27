@@ -23,6 +23,7 @@
 #include <android/log.h>
 #include <cassert>
 #include "log/include/log_abs.h"
+#include "x264.h"
 
 namespace {
     const char *TAG = "LiveRtmp";

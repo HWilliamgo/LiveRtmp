@@ -34,7 +34,7 @@ enum class LogLevel : uint8_t {
 class Log {
 protected:
     char *m_tag = nullptr;
-    LogLevel logLevel = LogLevel::LOG_LEVEL_NO;
+    LogLevel logLevel = LogLevel::LOG_LEVEL_VERBOSE;
 public:
     void setTag(const char *tag) {
         if (!tag) {

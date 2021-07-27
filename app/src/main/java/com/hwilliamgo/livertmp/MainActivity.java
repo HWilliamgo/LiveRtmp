@@ -17,14 +17,22 @@ public class MainActivity extends AppCompatActivity {
     private MediaProjectionManager mediaProjectionManager;
     private MediaProjection mediaProjection;
     ScreenLive screenLive;
-    String url = "rtmp://sendtc3.douyu.com/live/6458908rmvq5ljmC?wsSecret=52121ea8374c22e3a55ef008714b0594&wsTime=60ec5a06&wsSeek=off&wm=0&tw=0&roirecognition=0&record=flv&origin=tct";
+    String url = "rtmp://sendtc3.douyu.com/live/6458908rmq5ljmC?wsSecret=52121ea8374c22e3a55ef008714b0594&wsTime=60ec5a06&wsSeek=off&wm=0&tw=0&roirecognition=0&record=flv&origin=tct";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        RTMPJni.init();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         checkPermission();
     }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        RTMPJni.destroy();
+    }
+
     public boolean checkPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(
                 Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
