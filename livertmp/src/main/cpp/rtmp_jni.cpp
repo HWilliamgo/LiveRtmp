@@ -25,12 +25,15 @@
 #include "log/include/log_abs.h"
 #include "x264.h"
 
+// <editor-fold defaultstate="collapsed" desc="全局变量定义">
 namespace {
     const char *TAG = "LiveRtmp";
     const char *CLASS_RMP_JNI = "com/hwilliamgo/livertmp/RTMPJni";
     jclass jni_class;
 }
+// </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="JNI函数定义">
 static void RTMP_init(JNIEnv *env, jclass clazz) {
     MyLog::init_log(LogType::SimpleLog, TAG);
     MyLog::v(__func__);
@@ -60,7 +63,9 @@ static jboolean RTMP_JNI_Connect(JNIEnv *env, jclass clazz, jstring url_) {
 static void RTMP_destroy(JNIEnv *env, jclass clazz) {
     MyLog::destroy_log();
 }
+// </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="动态加载jni函数">
 static JNINativeMethod g_methods[] = {
         {"init",     "()V",                   (void *) RTMP_init},
         {"sendData", "([BIJ)Z",               (void *) RTMP_JNI_SendData},
@@ -87,5 +92,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 JNIEXPORT void JNI_OnUnload(JavaVM *jvm, void *reserved) {
 
 }
+// </editor-fold>
 
 

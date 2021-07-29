@@ -5,53 +5,11 @@
 #include  "librtmp/rtmp.h"
 #include "log/include/log_abs.h"
 
-static void freeGlobalLive();
-
+// <editor-fold defaultstate="collapsed" desc="全局变量定义">
 static RtmpWrap::Live *globalLive = nullptr;
+// </editor-fold>
 
-int RtmpWrap::connect(const char *url) {
-    //实例化
-    globalLive = (Live *) malloc(sizeof(Live));
-    memset(globalLive, 0, sizeof(Live));
-
-    globalLive->rtmp = RTMP_Alloc();
-    RTMP_Init(globalLive->rtmp);
-    globalLive->rtmp->Link.timeout = 10;
-    if (!url || strlen(url) == 0) {
-        MyLog::v("input url is empty");
-        return false;
-    }
-    MyLog::v("rtmp_wrap_connect %s", url);
-    if (!RTMP_SetupURL(globalLive->rtmp, (char *) url)) {
-        MyLog::v("RTMP_SetupURL failed");
-        freeGlobalLive();
-        return -1;
-    }
-    RTMP_EnableWrite(globalLive->rtmp);
-    MyLog::v("RTMP_Connect");
-    if (!RTMP_Connect(globalLive->rtmp, nullptr)) {
-        MyLog::v("RTMP_Connect failed");
-        freeGlobalLive();
-        return -1;
-    }
-    MyLog::v("RTMP_ConnectStream ");
-    if (!RTMP_ConnectStream(globalLive->rtmp, 0)) {
-        MyLog::v("RTMP_ConnectStream failed");
-        freeGlobalLive();
-        return -1;
-    }
-    MyLog::v("rtmp_wrap_connect success");
-    return 1;
-}
-
-static void freeGlobalLive() {
-    if (globalLive) {
-        free(globalLive);
-        globalLive = nullptr;
-    }
-}
-
-
+// <editor-fold defaultstate="collapsed" desc="初始化sps pps">
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408681B4284D4  0000000168  EE 06 F2 C0
 static void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
 
@@ -83,7 +41,9 @@ static void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
         }
     }
 }
+// </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="创建包">
 static RTMPPacket *createVideoPackage(RtmpWrap::Live *live) {
 //sps  pps 的 packaet
     int body_size = 16 + live->sps_len + live->pps_len;
@@ -176,14 +136,64 @@ static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Rtmp
     packet->m_nInfoField2 = live->rtmp->m_stream_id;
     return packet;
 }
+// </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="发送包">
 static int sendPacket(RTMPPacket *packet) {
     int r = RTMP_SendPacket(globalLive->rtmp, packet, 1);
     RTMPPacket_Free(packet);
     free(packet);
     return r;
 }
+// </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="释放">
+static void freeGlobalLive() {
+    if (globalLive) {
+        free(globalLive);
+        globalLive = nullptr;
+    }
+}
+// </editor-fold>
+
+//////////////////////////////
+////        API
+/////////////////////////////
+
+int RtmpWrap::connect(const char *url) {
+    //实例化
+    globalLive = (Live *) malloc(sizeof(Live));
+    memset(globalLive, 0, sizeof(Live));
+
+    globalLive->rtmp = RTMP_Alloc();
+    RTMP_Init(globalLive->rtmp);
+    globalLive->rtmp->Link.timeout = 10;
+    if (!url || strlen(url) == 0) {
+        MyLog::v("input url is empty");
+        return false;
+    }
+    MyLog::v("rtmp_wrap_connect %s", url);
+    if (!RTMP_SetupURL(globalLive->rtmp, (char *) url)) {
+        MyLog::v("RTMP_SetupURL failed");
+        freeGlobalLive();
+        return -1;
+    }
+    RTMP_EnableWrite(globalLive->rtmp);
+    MyLog::v("RTMP_Connect");
+    if (!RTMP_Connect(globalLive->rtmp, nullptr)) {
+        MyLog::v("RTMP_Connect failed");
+        freeGlobalLive();
+        return -1;
+    }
+    MyLog::v("RTMP_ConnectStream ");
+    if (!RTMP_ConnectStream(globalLive->rtmp, 0)) {
+        MyLog::v("RTMP_ConnectStream failed");
+        freeGlobalLive();
+        return -1;
+    }
+    MyLog::v("rtmp_wrap_connect success");
+    return 1;
+}
 
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408081B4284D4  0000000168 EE 06 F2 C0
 int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
