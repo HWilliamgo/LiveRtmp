@@ -18,18 +18,17 @@ include_directories(${CMAKE_SOURCE_DIR}/x264/include)
 
 include_directories(include)
 
-add_library( # Sets the name of the library.
+add_library(
         hw-rtmp
 
-        # Sets the library as a shared library.
         SHARED
 
-        # Provides a relative path to your source file(s).
+        VideoEncoder.cpp
         rtmp_jni.cpp
         rtmp_wrap.cpp)
 
 
-target_link_libraries( # Specifies the target library.
+target_link_libraries(
         hw-rtmp
         rtmp
         myLog
