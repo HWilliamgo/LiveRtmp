@@ -5,7 +5,7 @@
 #ifndef LIVE_RTMP_WRAP_H
 #define LIVE_RTMP_WRAP_H
 
-#include "librtmp/rtmp.h"
+#include "../../librtmp/rtmp.h"
 
 namespace RtmpWrap {
     typedef struct Live {

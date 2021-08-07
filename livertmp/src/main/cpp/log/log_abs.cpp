@@ -95,4 +95,74 @@ namespace MyLog {
         log->e(msg_to_print);
         delete msg_to_print;
     }
+
+    void vTag(const char *tag, const char *msg, ...) {
+        if (!log) {
+            return;
+        }
+        va_list args;
+        va_start(args, msg);
+        char *msg_to_print = nullptr;
+        vasprintf(&msg_to_print, msg, args);
+        va_end(args);
+
+        log->vTag(tag, msg_to_print);
+        delete msg_to_print;
+    }
+
+    void dTag(const char *tag, const char *msg, ...) {
+        if (!log) {
+            return;
+        }
+        va_list args;
+        va_start(args, msg);
+        char *msg_to_print = nullptr;
+        vasprintf(&msg_to_print, msg, args);
+        va_end(args);
+
+        log->dTag(tag, msg_to_print);
+        delete msg_to_print;
+    }
+
+    void iTag(const char *tag, const char *msg, ...) {
+        if (!log) {
+            return;
+        }
+        va_list args;
+        va_start(args, msg);
+        char *msg_to_print = nullptr;
+        vasprintf(&msg_to_print, msg, args);
+        va_end(args);
+
+        log->iTag(tag, msg_to_print);
+        delete msg_to_print;
+    }
+
+    void wTag(const char *tag, const char *msg, ...) {
+        if (!log) {
+            return;
+        }
+        va_list args;
+        va_start(args, msg);
+        char *msg_to_print = nullptr;
+        vasprintf(&msg_to_print, msg, args);
+        va_end(args);
+
+        log->wTag(tag, msg_to_print);
+        delete msg_to_print;
+    }
+
+    void eTag(const char *tag, const char *msg, ...) {
+        if (!log) {
+            return;
+        }
+        va_list args;
+        va_start(args, msg);
+        char *msg_to_print = nullptr;
+        vasprintf(&msg_to_print, msg, args);
+        va_end(args);
+
+        log->eTag(tag, msg_to_print);
+        delete msg_to_print;
+    }
 }

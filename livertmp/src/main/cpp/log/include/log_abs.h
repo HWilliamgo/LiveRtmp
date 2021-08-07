@@ -110,6 +110,12 @@ namespace MyLog {
     void w(const char *msg, ...);
 
     void e(const char *msg, ...);
+
+    void vTag(const char *tag, const char *msg, ...);
+    void dTag(const char *tag, const char *msg, ...);
+    void iTag(const char *tag, const char *msg, ...);
+    void wTag(const char *tag, const char *msg, ...);
+    void eTag(const char *tag, const char *msg, ...);
 }
 // </editor-fold>
 

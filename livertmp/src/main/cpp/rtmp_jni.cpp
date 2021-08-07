@@ -20,23 +20,26 @@
 
 #include <jni.h>
 #include "rtmp_wrap.h"
-#include <android/log.h>
+#include "x264_wrap.h"
 #include <cassert>
-#include "log/include/log_abs.h"
+#include "log_abs.h"
 #include "x264.h"
 #include "VideoEncoder.h"
 #include "safe_queue.h"
+#include "hwutil.h"
 
 // <editor-fold defaultstate="collapsed" desc="全局变量定义">
 namespace {
     /**** 字符串常量定义 ****/
     const char *TAG = "LiveRtmp";
-    const char *CLASS_RMP_JNI = "com/hwilliamgo/livertmp/RTMPJni";
-    const char *CLASS_RTMP_X264_JNI = "com/hwilliamgo/livertmp/RTMPX264Jni";
+    const char *CLASS_RMP_JNI = "com/hwilliamgo/livertmp/jni/RTMPJni";
+    const char *CLASS_X264_JNI = "com/hwilliamgo/livertmp/jni/X264Jni";
+    const char *CLASS_RTMP_X264_JNI = "com/hwilliamgo/livertmp/jni/RTMPX264Jni";
 
     /**** java类定义 ****/
-    jclass jni_class_rtmp;
-    jclass jni_class_rtmp_x264;
+    jclass jni_class_rtmp = nullptr;
+    jclass jni_class_x264 = nullptr;
+    jclass jni_class_rtmp_x264 = nullptr;
 
     /**** 引擎定义 ****/
     VideoEncoder *videoEncoder = nullptr;
@@ -149,12 +152,39 @@ static void RTMPX264Jni_native_release
 }
 // </editor-fold>
 
+static void X264Jni_init(JNIEnv *env, jclass clazz) {
+    MyLog::init_log(LogType::SimpleLog, TAG);
+    X264Wrap::init();
+}
+
+static void
+X264Jni_setVideoCodecInfo(JNIEnv *env, jclass clazz, int width, int height, int fps, int bitrate) {
+    X264Wrap::setVideoCodecInfo(width, height, fps, bitrate);
+}
+
+static void X264Jni_encode(JNIEnv *env, jclass clazz, jbyteArray yuvData) {
+    int8_t *data = env->GetByteArrayElements(yuvData, nullptr);
+    X264Wrap::encode(data);
+    env->ReleaseByteArrayElements(yuvData, data, JNI_ABORT);
+}
+
+static void X264Jni_destroy(JNIEnv *env, jclass clazz) {
+    X264Wrap::destroy();
+    MyLog::destroy_log();
+}
+
 // <editor-fold defaultstate="collapsed" desc="动态加载jni函数">
 static JNINativeMethod g_methods_rtmp[] = {
         {"init",     "()V",                   (void *) RTMP_init},
         {"sendData", "([BIJ)Z",               (void *) RTMP_JNI_SendData},
         {"connect",  "(Ljava/lang/String;)Z", (void *) RTMP_JNI_Connect},
         {"destroy",  "()V",                   (void *) RTMP_destroy}
+};
+static JNINativeMethod g_methods_x264[] = {
+        {"init",              "()V",     (void *) X264Jni_init},
+        {"setVideoCodecInfo", "(IIII)V", (void *) X264Jni_setVideoCodecInfo},
+        {"encode",            "([B)V",   (void *) X264Jni_encode},
+        {"destroy",           "()V",     (void *) X264Jni_destroy}
 };
 static JNINativeMethod g_methods_rtmp_x264[] = {
         {"native_init",                "()V",                   (void *) RTMPX264Jni_native_init},
@@ -165,6 +195,15 @@ static JNINativeMethod g_methods_rtmp_x264[] = {
         {"native_release",             "()V",                   (void *) RTMPX264Jni_native_release}
 };
 
+static void registerJniMethod(JNIEnv *env,
+                              jclass *jniClass,
+                              const char *classFullName,
+                              JNINativeMethod *allMethods,
+                              int methodLength) {
+    *jniClass = env->FindClass(classFullName);
+    env->RegisterNatives(*jniClass, allMethods, methodLength);
+}
+
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     JNIEnv *env = nullptr;
 
@@ -173,17 +212,12 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     }
     assert(env != nullptr);
 
-    jni_class_rtmp = env->FindClass(CLASS_RMP_JNI);
-    env->RegisterNatives(jni_class_rtmp,
-                         g_methods_rtmp,
-                         sizeof(g_methods_rtmp) / sizeof(g_methods_rtmp[0]));
-
-    jni_class_rtmp_x264 = env->FindClass(CLASS_RTMP_X264_JNI);
-    env->RegisterNatives(jni_class_rtmp_x264,
-                         g_methods_rtmp_x264,
-                         sizeof(g_methods_rtmp_x264) / sizeof(g_methods_rtmp_x264[0]));
-
-    //初始化
+    registerJniMethod(env, &jni_class_rtmp, CLASS_RMP_JNI,
+                      g_methods_rtmp, NELEM(g_methods_rtmp));
+    registerJniMethod(env, &jni_class_x264, CLASS_X264_JNI,
+                      g_methods_x264, NELEM(g_methods_x264));
+    registerJniMethod(env, &jni_class_rtmp_x264, CLASS_RTMP_X264_JNI,
+                      g_methods_rtmp_x264, NELEM(g_methods_rtmp_x264));
 
     return JNI_VERSION_1_4;
 }

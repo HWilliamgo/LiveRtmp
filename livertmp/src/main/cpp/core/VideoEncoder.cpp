@@ -3,7 +3,10 @@
 //
 
 #include <cstring>
+#include <stdio.h>
 #include "VideoEncoder.h"
+
+static LogCallback mLogCallback = nullptr;
 
 VideoEncoder::VideoEncoder() : mWidth(0), mHeight(0), mBitrate(0), mFps(0), ySize(0), uvSize(0) {
 
@@ -54,6 +57,8 @@ void VideoEncoder::setVideoEncInfo(int width, int height, int fps, int bitrate) 
 //    sps  pps  赋值及裙楼
     //多线程
     param.i_threads = 1;
+    param.i_log_level = X264_LOG_DEBUG;
+    param.pf_log = VideoEncoder::logHook;
     x264_param_apply_profile(&param, "baseline");
 //    打开编码器
     if (videoCodec) {
@@ -61,6 +66,12 @@ void VideoEncoder::setVideoEncInfo(int width, int height, int fps, int bitrate) 
         videoCodec = nullptr;
     }
     videoCodec = x264_encoder_open(&param);
+    if (!videoCodec) {
+        if (mErrorCallback) {
+            mErrorCallback(ERROR_FAIL_TO_CREATE_CODEC, "fail to create codec");
+        }
+        return;
+    }
 //容器
     pic_in = new x264_picture_t;
 //设置初始化大小  容器大小就确定的
@@ -70,6 +81,9 @@ void VideoEncoder::setVideoEncInfo(int width, int height, int fps, int bitrate) 
 
 
 void VideoEncoder::encodeData(int8_t *data) {
+    if (!videoCodec) {
+        return;
+    }
 //    容器   y的数据
     memcpy(pic_in->img.plane[0], data, ySize);
     for (int i = 0; i < uvSize; ++i) {
@@ -95,9 +109,9 @@ void VideoEncoder::encodeData(int8_t *data) {
     if (pi_nal > 0) {
         for (int i = 0; i < pi_nal; ++i) {
 //            LOGE("输出索引:  %d  输出长度 %d",i,pi_nal);
-            if (mCallback) {
-                mCallback(reinterpret_cast<char *>(pp_nals[i].p_payload),
-                          pp_nals[i].i_payload);
+            if (mVideoEncodeCallback) {
+                mVideoEncodeCallback(reinterpret_cast<char *>(pp_nals[i].p_payload),
+                                     pp_nals[i].i_payload);
             }
         }
     }
@@ -111,8 +125,27 @@ VideoEncoder::~VideoEncoder() {
         x264_encoder_close(videoCodec);
         videoCodec = nullptr;
     }
+    mVideoEncodeCallback = nullptr;
+    mLogCallback = nullptr;
 }
 
-void VideoEncoder::setCallback(VideoEncoderCallback callback) {
-    this->mCallback = callback;
-};
+void VideoEncoder::setVideoEncodeCallback(VideoEncoderCallback callback) {
+    this->mVideoEncodeCallback = callback;
+}
+
+void VideoEncoder::setErrorCallback(ErrorCallback errorCallback) {
+    mErrorCallback = errorCallback;
+}
+
+void VideoEncoder::setLogger(LogCallback logCallback) {
+    mLogCallback = logCallback;
+}
+
+void VideoEncoder::logHook(void *, int i_level, const char *psz, va_list arg) {
+    if (mLogCallback) {
+        char *msg_to_print = nullptr;
+        vasprintf(&msg_to_print, psz, arg);
+        mLogCallback(msg_to_print);
+        delete msg_to_print;
+    }
+}

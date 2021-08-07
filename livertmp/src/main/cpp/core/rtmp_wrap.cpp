@@ -2,8 +2,8 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
-#include  "librtmp/rtmp.h"
-#include "log/include/log_abs.h"
+#include  "../librtmp/rtmp.h"
+#include "../log/include/log_abs.h"
 
 // <editor-fold defaultstate="collapsed" desc="全局变量定义">
 static RtmpWrap::Live *globalLive = nullptr;

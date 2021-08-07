@@ -1,4 +1,4 @@
-package com.hwilliamgo.livertmp;
+package com.hwilliamgo.livertmp.jni;
 
 /**
  * date: 2021/7/4
@@ -7,7 +7,7 @@ package com.hwilliamgo.livertmp;
  */
 public class RTMPJni {
     static {
-        System.loadLibrary("hw-rtmp");
+        JniLibLoader.loadLibOnce();
     }
 
     public static native void init();

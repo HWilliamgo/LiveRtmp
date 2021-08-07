@@ -3,6 +3,8 @@ package com.hwilliamgo.livertmp;
 import android.media.projection.MediaProjection;
 import android.util.Log;
 
+import com.hwilliamgo.livertmp.jni.RTMPJni;
+
 import java.util.concurrent.LinkedBlockingQueue;
 
 //推送层   维持这样的队列

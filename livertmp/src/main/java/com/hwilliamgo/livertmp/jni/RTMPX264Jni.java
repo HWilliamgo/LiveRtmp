@@ -1,4 +1,4 @@
-package com.hwilliamgo.livertmp;
+package com.hwilliamgo.livertmp.jni;
 
 /**
  * date: 2021/7/29
@@ -6,6 +6,10 @@ package com.hwilliamgo.livertmp;
  * description:
  */
 public class RTMPX264Jni {
+    static {
+        JniLibLoader.loadLibOnce();
+    }
+
     public static native void native_init();
 
     public static native void native_setVideoEncoderInfo(int width, int height, int fps, int bitrate);
