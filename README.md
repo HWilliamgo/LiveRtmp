@@ -1,0 +1,1 @@
+The project acts as a git submodule of project [fuzzy-video-drill](https://github.com/HWilliamgo/fuzzy-video-drill)
