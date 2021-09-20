@@ -78,7 +78,7 @@ public:
             q.pop();
             ret = 1;
         }
-#elsePLVScreenUtils
+#else
         pthread_mutex_lock(&mutex);
         //在多核处理器下 由于竞争可能虚假唤醒 包括jdk也说明了
         while (work && q.empty()) {

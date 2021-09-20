@@ -26,6 +26,7 @@ include_directories(
         ${CMAKE_SOURCE_DIR}/x264/include
         ${CMAKE_SOURCE_DIR}/core/include
         ${CMAKE_SOURCE_DIR}/log/include
+        ${CMAKE_SOURCE_DIR}/librtmp
 )
 
 

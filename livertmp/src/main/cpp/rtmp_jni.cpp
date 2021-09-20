@@ -44,6 +44,7 @@ namespace {
     /**** 引擎定义 ****/
     VideoEncoder *videoEncoder = nullptr;
 
+    JNIEnv *jniEnv = nullptr;
     /**
      * Rtmp状态
      */
@@ -57,19 +58,13 @@ namespace {
 
     pthread_t pid;
     //阻塞式队列
-//    SafeQueue<RTMPPacket *> *packets = nullptr;
+    SafeQueue<RTMPPacket *> *packets = nullptr;
 }
 // </editor-fold>
 
-static void createBlockingQueue(SafeQueue<RTMPPacket *> *packets) {
-
-}
-
-static void destroyBlockingQueue(SafeQueue<RTMPPacket *> *packets) {
-    if (packets) {
-        packets->clear();
-        delete packets;
-    }
+static void createBlockingQueue(SafeQueue<RTMPPacket *> **packets) {
+    *packets = new SafeQueue<RTMPPacket *>;
+    (*packets)->setWork(1);
 }
 
 // <editor-fold defaultstate="collapsed" desc="JNI函数定义-RTMP">
@@ -105,11 +100,16 @@ static void RTMP_destroy(JNIEnv *env, jclass clazz) {
 // </editor-fold>
 
 // <editor-fold defaultstate="collapsed" desc="JNI函数定义-RTMP_X264">
+static void onVideoEncoderCallback(char *encodedData, int size) {
+
+}
+
 static void RTMPX264Jni_native_init(JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::INIT;
     MyLog::init_log(LogType::SimpleLog, TAG);
     MyLog::v(__func__);
     videoEncoder = new VideoEncoder();
+    videoEncoder->setVideoEncodeCallback(&onVideoEncoderCallback);
 }
 
 static void RTMPX264Jni_native_setVideoEncoderInfo
@@ -121,25 +121,62 @@ static void RTMPX264Jni_native_setVideoEncoderInfo
 
 static void RTMPX264Jni_native_start
         (JNIEnv *env, jclass clazz, jstring path) {
+    // 设置状态
     rtmpStatus = RtmpStatus::START;
+    // 建立连接
     const char *url = env->GetStringUTFChars(path, nullptr);
-
     int ret = RtmpWrap::connect(url);
-//    if (packets) {
-//
-//    }
-
     env->ReleaseStringUTFChars(path, url);
+    if (!ret) {
+        // 连接失败
+        MyLog::d("RtmpWrap::connect failed");
+        return;
+    }
+    // 初始化包队列
+    createBlockingQueue(&packets);
+    // 循环取出队列中的包
+    while (rtmpStatus == RtmpStatus::START) {
+        RTMPPacket *packet = nullptr;
+        packets->pop(packet);
+        if (!packet) {
+            continue;
+        }
+        // 给每个包设置流Id
+        packet->m_nInfoField2 = RtmpWrap::getRtmpStreamId();
+        // 加入rtmp_dump自带的发送队列发送
+        ret = RtmpWrap::sendVideo(*packet);
+        if (!ret) {
+            MyLog::e("%s %s", __func__, "sendVideo failed");
+            break;
+        }
+    }
 }
 
 static void RTMPX264Jni_native_pushVideo
         (JNIEnv *env, jclass clazz, jbyteArray yuvData) {
-
+    int8_t *byte = env->GetByteArrayElements(yuvData, nullptr);
+    if (!byte) {
+        env->ReleaseByteArrayElements(yuvData, byte, JNI_ABORT);
+        return;
+    }
+    if (videoEncoder) {
+        videoEncoder->encodeData(byte);
+    }
+    env->ReleaseByteArrayElements(yuvData, byte, JNI_ABORT);
 }
 
 static void RTMPX264Jni_native_stop
         (JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::STOP;
+    // 销毁队列
+    if (packets) {
+        packets->setWork(0);
+        packets->clear();
+        delete packets;
+        packets = nullptr;
+    }
+
+    RtmpWrap::destroy();
 }
 
 static void RTMPX264Jni_native_release
@@ -152,9 +189,34 @@ static void RTMPX264Jni_native_release
 }
 // </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="JNI函数定义-X264">
+/**
+ * x264编码回调到java层
+ * @param encodedData   编码数据
+ * @param size          长度
+ */
+static void X264Jni_encodeCallback(char *encodedData, int size) {
+    jclass x264_jni_class = jniEnv->FindClass(CLASS_X264_JNI);
+    if (!x264_jni_class) {
+        return;
+    }
+    jmethodID onEncodeMethodId = jniEnv->GetStaticMethodID(x264_jni_class, "onEncode", "([B)V");
+    if (!onEncodeMethodId) {
+        return;
+    }
+    jbyteArray ret = jniEnv->NewByteArray(size);
+    if (!ret) {
+        return;
+    }
+    jniEnv->SetByteArrayRegion(ret, 0, size, reinterpret_cast<const signed char *>(encodedData));
+    jniEnv->CallStaticVoidMethod(x264_jni_class, onEncodeMethodId, ret);
+    jniEnv->DeleteLocalRef(ret);
+}
+
 static void X264Jni_init(JNIEnv *env, jclass clazz) {
     MyLog::init_log(LogType::SimpleLog, TAG);
     X264Wrap::init();
+    X264Wrap::setVideoEncodeCallback(X264Jni_encodeCallback);
 }
 
 static void
@@ -172,6 +234,7 @@ static void X264Jni_destroy(JNIEnv *env, jclass clazz) {
     X264Wrap::destroy();
     MyLog::destroy_log();
 }
+// </editor-fold>
 
 // <editor-fold defaultstate="collapsed" desc="动态加载jni函数">
 static JNINativeMethod g_methods_rtmp[] = {
@@ -181,10 +244,10 @@ static JNINativeMethod g_methods_rtmp[] = {
         {"destroy",  "()V",                   (void *) RTMP_destroy}
 };
 static JNINativeMethod g_methods_x264[] = {
-        {"init",              "()V",     (void *) X264Jni_init},
-        {"setVideoCodecInfo", "(IIII)V", (void *) X264Jni_setVideoCodecInfo},
-        {"encode",            "([B)V",   (void *) X264Jni_encode},
-        {"destroy",           "()V",     (void *) X264Jni_destroy}
+        {"native_init",              "()V",     (void *) X264Jni_init},
+        {"native_setVideoCodecInfo", "(IIII)V", (void *) X264Jni_setVideoCodecInfo},
+        {"native_encode",            "([B)V",   (void *) X264Jni_encode},
+        {"native_destroy",           "()V",     (void *) X264Jni_destroy}
 };
 static JNINativeMethod g_methods_rtmp_x264[] = {
         {"native_init",                "()V",                   (void *) RTMPX264Jni_native_init},
@@ -218,12 +281,12 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       g_methods_x264, NELEM(g_methods_x264));
     registerJniMethod(env, &jni_class_rtmp_x264, CLASS_RTMP_X264_JNI,
                       g_methods_rtmp_x264, NELEM(g_methods_rtmp_x264));
-
+    jniEnv = env;
     return JNI_VERSION_1_4;
 }
 
 JNIEXPORT void JNI_OnUnload(JavaVM *jvm, void *reserved) {
-
+    jniEnv = nullptr;
 }
 // </editor-fold>
 

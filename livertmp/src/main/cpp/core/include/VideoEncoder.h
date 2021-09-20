@@ -1,5 +1,5 @@
 //
-// Created by Administrator on 2021/1/18.
+// Created by HWilliamgo on 2021/8/3.
 //
 #ifndef BILIRTMP_VIDEOCHANNEL_H
 #define BILIRTMP_VIDEOCHANNEL_H
@@ -73,6 +73,7 @@ private:
     int mBitrate;
     int ySize;
     int uvSize;
+    int isFirstEncodeFrame;
     VideoEncoderCallback mVideoEncodeCallback = nullptr;
     ErrorCallback mErrorCallback = nullptr;
 

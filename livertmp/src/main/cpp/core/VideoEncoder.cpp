@@ -9,7 +9,7 @@
 static LogCallback mLogCallback = nullptr;
 
 VideoEncoder::VideoEncoder() : mWidth(0), mHeight(0), mBitrate(0), mFps(0), ySize(0), uvSize(0) {
-
+    isFirstEncodeFrame = 1;
 }
 
 void VideoEncoder::setVideoEncInfo(int width, int height, int fps, int bitrate) {
@@ -53,7 +53,7 @@ void VideoEncoder::setVideoEncInfo(int width, int height, int fps, int bitrate) 
     param.i_keyint_max = fps * 2;
 
     // 是否复制sps和pps放在每个关键帧的前面 该参数设置是让每个关键帧(I帧)都附带sps/pps。
-    param.b_repeat_headers = 1;
+    param.b_repeat_headers = 0;// 为了保持和MediaCodec编码出的一致，这里I帧前面不要插入sps和pps。
 //    sps  pps  赋值及裙楼
     //多线程
     param.i_threads = 1;
@@ -104,8 +104,21 @@ void VideoEncoder::encodeData(int8_t *data) {
 //编码出的参数  BufferInfo
     x264_picture_t pic_out;
 //关键的一句话   yuv  数据 转化 H
-    x264_encoder_encode(videoCodec, &pp_nals, &pi_nal, pic_in, &pic_out);
+    if (isFirstEncodeFrame) {
+        isFirstEncodeFrame = 0;
+        x264_encoder_headers(videoCodec, &pp_nals, &pi_nal);
 //    LOGE("编码出的帧数  %d", pi_nal);
+        if (pi_nal > 0) {
+            for (int i = 0; i < pi_nal; ++i) {
+//            LOGE("输出索引:  %d  输出长度 %d",i,pi_nal);
+                if (mVideoEncodeCallback) {
+                    mVideoEncodeCallback(reinterpret_cast<char *>(pp_nals[i].p_payload),
+                                         pp_nals[i].i_payload);
+                }
+            }
+        }
+    }
+    x264_encoder_encode(videoCodec, &pp_nals, &pi_nal, pic_in, &pic_out);
     if (pi_nal > 0) {
         for (int i = 0; i < pi_nal; ++i) {
 //            LOGE("输出索引:  %d  输出长度 %d",i,pi_nal);

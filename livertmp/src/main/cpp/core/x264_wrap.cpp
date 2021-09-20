@@ -8,11 +8,6 @@ namespace {
     const char *TAG = nullptr;
 }
 
-
-void videoEncodeCallback(char *encodedData, int size) {
-    MyLog::dTag(TAG, "videoEncodeCallback->size=%d", size);
-}
-
 namespace X264Wrap {
     void videoEncoderLogCallback(const char *msg) {
         MyLog::dTag(TAG, "%s", msg);
@@ -31,7 +26,6 @@ void X264Wrap::init() {
         videoEncoder = nullptr;
     }
     videoEncoder = new VideoEncoder();
-    videoEncoder->setVideoEncodeCallback(videoEncodeCallback);
     videoEncoder->setErrorCallback(errorCallback);
     VideoEncoder::setLogger(X264Wrap::videoEncoderLogCallback);
 }
@@ -39,6 +33,12 @@ void X264Wrap::init() {
 void X264Wrap::setVideoCodecInfo(int width, int height, int fps, int bitrate) {
     if (videoEncoder) {
         videoEncoder->setVideoEncInfo(width, height, fps, bitrate);
+    }
+}
+
+void X264Wrap::setVideoEncodeCallback(VideoEncoderCallback callback) {
+    if (videoEncoder) {
+        videoEncoder->setVideoEncodeCallback(callback);
     }
 }
 

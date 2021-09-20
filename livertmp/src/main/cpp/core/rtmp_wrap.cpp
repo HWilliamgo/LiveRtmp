@@ -2,10 +2,11 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
-#include  "../librtmp/rtmp.h"
-#include "../log/include/log_abs.h"
+#include  "rtmp.h"
+#include "log_abs.h"
 
 // <editor-fold defaultstate="collapsed" desc="全局变量定义">
+static const int INVALIDE_DEF_RTMP_STREAM_ID = -1;
 static RtmpWrap::Live *globalLive = nullptr;
 // </editor-fold>
 
@@ -45,6 +46,10 @@ static void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
 
 // <editor-fold defaultstate="collapsed" desc="创建包">
 static RTMPPacket *createVideoPackage(RtmpWrap::Live *live) {
+    RTMP *rtmp = live->rtmp;
+    if (!rtmp) {
+        return nullptr;
+    }
 //sps  pps 的 packaet
     int body_size = 16 + live->sps_len + live->pps_len;
     RTMPPacket *packet = (RTMPPacket *) malloc(sizeof(RTMPPacket));
@@ -139,7 +144,15 @@ static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, Rtmp
 // </editor-fold>
 
 // <editor-fold defaultstate="collapsed" desc="发送包">
+/**
+ * 发送RTMP包数据
+ * @param packet 包数据
+ * @return 1表示发送成功，0表示发送失败
+ */
 static int sendPacket(RTMPPacket *packet) {
+    if (!globalLive->rtmp) {
+        return 0;
+    }
     int r = RTMP_SendPacket(globalLive->rtmp, packet, 1);
     RTMPPacket_Free(packet);
     free(packet);
@@ -165,28 +178,29 @@ int RtmpWrap::connect(const char *url) {
     globalLive = (Live *) malloc(sizeof(Live));
     memset(globalLive, 0, sizeof(Live));
 
-    globalLive->rtmp = RTMP_Alloc();
-    RTMP_Init(globalLive->rtmp);
-    globalLive->rtmp->Link.timeout = 10;
+    RTMP *rtmp = RTMP_Alloc();
+    globalLive->rtmp = rtmp;
+    RTMP_Init(rtmp);
+    rtmp->Link.timeout = 10;
     if (!url || strlen(url) == 0) {
         MyLog::v("input url is empty");
         return false;
     }
     MyLog::v("rtmp_wrap_connect %s", url);
-    if (!RTMP_SetupURL(globalLive->rtmp, (char *) url)) {
+    if (!RTMP_SetupURL(rtmp, (char *) url)) {
         MyLog::v("RTMP_SetupURL failed");
         freeGlobalLive();
         return -1;
     }
-    RTMP_EnableWrite(globalLive->rtmp);
+    RTMP_EnableWrite(rtmp);
     MyLog::v("RTMP_Connect");
-    if (!RTMP_Connect(globalLive->rtmp, nullptr)) {
+    if (!RTMP_Connect(rtmp, nullptr)) {
         MyLog::v("RTMP_Connect failed");
         freeGlobalLive();
         return -1;
     }
     MyLog::v("RTMP_ConnectStream ");
-    if (!RTMP_ConnectStream(globalLive->rtmp, 0)) {
+    if (!RTMP_ConnectStream(rtmp, 0)) {
         MyLog::v("RTMP_ConnectStream failed");
         freeGlobalLive();
         return -1;
@@ -211,11 +225,39 @@ int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
 //         推两个
 //sps 和 ppps 的paclet  发送sps pps
         RTMPPacket *packet = createVideoPackage(globalLive);
-        sendPacket(packet);
+        if (packet) {
+            sendPacket(packet);
+        }
 //        发送I帧
     }
 //    两个   I帧  0x17  B P 0x27
     RTMPPacket *packet2 = createVideoPackage(buf, len, tms, globalLive);
-    ret = sendPacket(packet2);
+    if (packet2) {
+        ret = sendPacket(packet2);
+    }
     return ret;
+}
+
+int RtmpWrap::sendVideo(RTMPPacket &packet) {
+    return sendPacket(&packet);
+}
+
+int RtmpWrap::getRtmpStreamId() {
+    if (globalLive && globalLive->rtmp) {
+        return globalLive->rtmp->m_stream_id;
+    } else {
+        return INVALIDE_DEF_RTMP_STREAM_ID;
+    }
+}
+
+void RtmpWrap::destroy() {
+    if (globalLive) {
+        RTMP *rtmp = globalLive->rtmp;
+        if (rtmp) {
+            RTMP_Close(rtmp);
+            RTMP_Free(rtmp);
+            globalLive->rtmp = nullptr;
+        }
+        freeGlobalLive();
+    }
 }

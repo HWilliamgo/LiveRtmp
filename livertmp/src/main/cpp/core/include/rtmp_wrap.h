@@ -18,21 +18,34 @@ namespace RtmpWrap {
         int8_t *pps;
     } Live;
 
-/**
- * rtmp 建立连接
- * @param url url
- * @return 1表示成功，0表示失败
- */
+    /**
+     * rtmp 建立连接
+     * @param url url
+     * @return 1表示成功，0表示失败
+     */
     int connect(const char *url);
 
-/**
- * 发送视频编码数据
- * @param buf 编码视频数据
- * @param len 数据长度
- * @param tms 时间戳
- * @return
- */
+    /**
+     * 发送视频编码数据
+     * @param buf 编码视频数据
+     * @param len 数据长度
+     * @param tms 时间戳
+     * @return
+     */
     int sendVideo(int8_t *buf, int len, long tms);
+
+    int sendVideo(RTMPPacket &packet);
+
+    /**
+     * 获取RTMP流Id
+     * @return 流Id
+     */
+    int getRtmpStreamId();
+
+    /**
+     * 销毁
+     */
+    void destroy();
 }
 
 
