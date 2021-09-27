@@ -4,44 +4,112 @@
 #include <android/log.h>
 #include  "rtmp.h"
 #include "log_abs.h"
+#include "hwutil.h"
+#include "log.h"
 
 // <editor-fold defaultstate="collapsed" desc="全局变量定义">
-static const int INVALIDE_DEF_RTMP_STREAM_ID = -1;
-static RtmpWrap::Live *globalLive = nullptr;
+namespace {
+    const int INVALIDE_DEF_RTMP_STREAM_ID = -1;
+    RtmpWrap::Live *globalLive = nullptr;
+    uint32_t startTime = 0;
+}
 // </editor-fold>
 
-// <editor-fold defaultstate="collapsed" desc="初始化sps pps">
-//传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408681B4284D4  0000000168  EE 06 F2 C0
-static void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
+namespace RtmpWrap {
+    // 是否是SPS帧
+    bool isFrameSPS(const int8_t *buf) {
+        if (buf) {
+            return HWUtils::parseHexNaluType(buf[4]) == HWUtils::nal_unit_type_e::NAL_SPS;
+        } else {
+            return false;
+        }
+    }
 
-    for (int i = 0; i < len; i++) {
-//        防止越界
-        if (i + 4 < len) {
-            if (data[i] == 0x00 && data[i + 1] == 0x00
-                && data[i + 2] == 0x00
-                && data[i + 3] == 0x01) {
-                if (data[i + 4] == 0x68) {
-                    live->sps_len = i - 4;
-//                    new一个数组
-                    live->sps = static_cast<int8_t *>(malloc(live->sps_len));
-//                    sps解析出来了
-                    memcpy(live->sps, data + 4, live->sps_len);
+    // 是否是PPS帧
+    bool isFramePPS(const int8_t *buf) {
+        if (buf) {
+            return HWUtils::parseHexNaluType(buf[4] == HWUtils::nal_unit_type_e::NAL_PPS);
+        } else {
+            return false;
+        }
+    }
 
-//                    解析pps
-                    live->pps_len = len - (4 + live->sps_len) - 4;
-//                    实例化PPS 的数组
-                    live->pps = static_cast<int8_t *>(malloc(live->pps_len));
-//                    rtmp  协议
-
-                    memcpy(live->pps, data + 4 + live->sps_len + 4, live->pps_len);
-                    MyLog::v("sps:%d pps:%d", live->sps_len, live->pps_len);
-                    break;
-                }
-            }
-
+    // 是否是IDR帧
+    bool isFrameIDR(const int8_t *buf) {
+        if (buf) {
+            return HWUtils::parseHexNaluType(buf[4] == HWUtils::nal_unit_type_e::NAL_SLICE_IDR);
+        } else {
+            return false;
         }
     }
 }
+
+// <editor-fold defaultstate="collapsed" desc="初始化sps pps">
+namespace {
+    //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408681B4284D4  0000000168  EE 06 F2 C0
+    /**
+     * 初始化live中的sps和pps数据，其中data数组中同时包含了sps和pps的数据
+     * @param data sps+pps数据
+     * @param len  长度
+     * @param live RtmpWrap::Live
+     */
+    void initSpsPps(int8_t *data, int len, RtmpWrap::Live *live) {
+        for (int i = 0; i < len; i++) {
+//        防止越界
+            if (i + 4 < len) {
+                if (data[i] == 0x00 && data[i + 1] == 0x00
+                    && data[i + 2] == 0x00
+                    && data[i + 3] == 0x01) {
+                    if (data[i + 4] == 0x68) {
+                        live->sps_len = i - 4;
+//                    new一个数组
+                        live->sps = static_cast<int8_t *>(malloc(live->sps_len));
+//                    sps解析出来了
+                        memcpy(live->sps, data + 4, live->sps_len);
+
+//                    解析pps
+                        live->pps_len = len - (4 + live->sps_len) - 4;
+//                    实例化PPS 的数组
+                        live->pps = static_cast<int8_t *>(malloc(live->pps_len));
+//                    rtmp  协议
+
+                        memcpy(live->pps, data + 4 + live->sps_len + 4, live->pps_len);
+                        MyLog::v("sps:%d pps:%d", live->sps_len, live->pps_len);
+                        break;
+                    }
+                }
+
+            }
+        }
+    }
+
+    /**
+     * 初始化SPS
+     * @param data SPS数据
+     * @param len  长度
+     * @param live live
+     */
+    void initSPS(int8_t *data, int len, RtmpWrap::Live *live) {
+        if (len < 4) {
+            MyLog::d("len < 4 , failed to init SPS");
+            return;
+        }
+        live->sps_len = len - 4;
+        live->sps = static_cast<int8_t *>(malloc(live->sps_len));
+        memcpy(live->sps, data + 4, live->sps_len);
+    }
+
+    void initPPS(int8_t *data, int len, RtmpWrap::Live *live) {
+        if (len < 4) {
+            MyLog::d("len < 4 , failed to init PPS");
+            return;
+        }
+        live->pps_len = len - 4;
+        live->pps = static_cast<int8_t *>(malloc(live->pps_len));
+        memcpy(live->pps, data + 4, live->pps_len);
+    }
+}
+
 // </editor-fold>
 
 // <editor-fold defaultstate="collapsed" desc="创建包">
@@ -95,7 +163,7 @@ static RTMPPacket *createVideoPackage(RtmpWrap::Live *live) {
     packet->m_nBodySize = body_size;
 //    视频 04
     packet->m_nChannel = 0x04;
-    packet->m_nTimeStamp = 0;
+    packet->m_nTimeStamp = RTMP_GetTime() - startTime;
     packet->m_hasAbsTimestamp = 0;
     packet->m_headerType = RTMP_PACKET_SIZE_LARGE;
     packet->m_nInfoField2 = live->rtmp->m_stream_id;
@@ -169,11 +237,19 @@ static void freeGlobalLive() {
 }
 // </editor-fold>
 
+static void My_RTMP_LogCallback(int level, const char *fmt, va_list args) {
+    char *msg_to_print = nullptr;
+    vasprintf(&msg_to_print, fmt, args);
+    MyLog::dTag(HWUtils::getFileNameFromPath(__FILE__), msg_to_print);
+    delete msg_to_print;
+}
+
 //////////////////////////////
 ////        API
 /////////////////////////////
 
 int RtmpWrap::connect(const char *url) {
+    RTMP_LogSetCallback(My_RTMP_LogCallback);
     //实例化
     globalLive = (Live *) malloc(sizeof(Live));
     memset(globalLive, 0, sizeof(Live));
@@ -206,13 +282,14 @@ int RtmpWrap::connect(const char *url) {
         return -1;
     }
     MyLog::v("rtmp_wrap_connect success");
+    startTime = RTMP_GetTime();
     return 1;
 }
 
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408081B4284D4  0000000168 EE 06 F2 C0
 int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
     int ret = 0;
-    if (buf[4] == 0x67) {
+    if (isFrameSPS(buf)) {
 //        缓存sps 和pps 到全局变量 不需要推流
         if (globalLive && (!globalLive->pps || !globalLive->sps)) {
 //缓存 没有推流
@@ -221,7 +298,7 @@ int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
         return ret;
     }
 //    I帧
-    if (buf[4] == 0x65) {//关键帧
+    if (isFrameIDR(buf)) {//关键帧
 //         推两个
 //sps 和 ppps 的paclet  发送sps pps
         RTMPPacket *packet = createVideoPackage(globalLive);
@@ -236,6 +313,25 @@ int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
         ret = sendPacket(packet2);
     }
     return ret;
+}
+
+void RtmpWrap::createRtmpPacket(RTMPPacket **packet, int8_t *buf, int len) {
+    if (!globalLive) {
+        return;
+    }
+    // 初始化sps和pps
+    if (isFrameSPS(buf)) {
+        if (!globalLive->sps) {
+            initSPS(buf, len, globalLive);
+        }
+    } else if (isFrameIDR(buf)) {
+        if (!globalLive->pps) {
+            initPPS(buf, len, globalLive);
+        }
+        *packet = createVideoPackage(globalLive);
+    } else {
+        *packet = createVideoPackage(buf, len, RTMP_GetTime() - startTime, globalLive);
+    }
 }
 
 int RtmpWrap::sendVideo(RTMPPacket &packet) {

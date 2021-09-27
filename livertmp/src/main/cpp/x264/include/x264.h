@@ -575,7 +575,7 @@ typedef struct x264_param_t
 
     /* Optional low-level callback for low-latency encoding.  Called for each output NAL unit
      * immediately after the NAL unit is finished encoding.  This allows the calling application
-     * to begin processing video data (e.g. by sending packets over a network) before the frame
+     * to begin processing video data (e.g. by sending globalPackets over a network) before the frame
      * is done encoding.
      *
      * This callback MUST do the following in order to work correctly:

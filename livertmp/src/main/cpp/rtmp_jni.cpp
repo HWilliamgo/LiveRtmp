@@ -27,6 +27,8 @@
 #include "VideoEncoder.h"
 #include "safe_queue.h"
 #include "hwutil.h"
+#include "pthread.h"
+#include "malloc.h"
 
 // <editor-fold defaultstate="collapsed" desc="全局变量定义">
 namespace {
@@ -56,9 +58,10 @@ namespace {
     };
     RtmpStatus rtmpStatus = RtmpStatus::DESTROY;
 
+    // 工作线程id
     pthread_t pid;
     //阻塞式队列
-    SafeQueue<RTMPPacket *> *packets = nullptr;
+    SafeQueue<RTMPPacket *> *globalPackets = nullptr;
 }
 // </editor-fold>
 
@@ -101,7 +104,51 @@ static void RTMP_destroy(JNIEnv *env, jclass clazz) {
 
 // <editor-fold defaultstate="collapsed" desc="JNI函数定义-RTMP_X264">
 static void onVideoEncoderCallback(char *encodedData, int size) {
+    if (globalPackets) {
+        RTMPPacket *packet = nullptr;
+        RtmpWrap::createRtmpPacket(&packet, reinterpret_cast<int8_t *>(encodedData), size);
+        if (packet) {
+            globalPackets->push(packet);
+        }
+    }
+}
 
+/**
+ * RTMPX264的队列线程
+ * @param args  参数
+ * @return      nullptr
+ */
+static void *RTMPX264_thread(void *args) {
+    const char *url = static_cast<const char *>(args);
+    int ret = RtmpWrap::connect(url);
+    free((void *) url);
+    url= nullptr;
+    if (!ret) {
+        // 连接失败
+        MyLog::d("RtmpWrap::connect failed");
+        return nullptr;
+    }
+    // 初始化包队列
+    createBlockingQueue(&globalPackets);
+    // 循环取出队列中的包
+    while (rtmpStatus == RtmpStatus::START) {
+        RTMPPacket *packet = nullptr;
+        if (globalPackets) {
+            globalPackets->pop(packet);
+        }
+        if (!packet) {
+            continue;
+        }
+        // 给每个包设置流Id
+        packet->m_nInfoField2 = RtmpWrap::getRtmpStreamId();
+        // 加入rtmp_dump自带的发送队列发送
+        ret = RtmpWrap::sendVideo(*packet);
+        if (!ret) {
+            MyLog::e("%s %s", __func__, "sendVideo failed");
+            break;
+        }
+    }
+    return nullptr;
 }
 
 static void RTMPX264Jni_native_init(JNIEnv *env, jclass clazz) {
@@ -115,7 +162,7 @@ static void RTMPX264Jni_native_init(JNIEnv *env, jclass clazz) {
 static void RTMPX264Jni_native_setVideoEncoderInfo
         (JNIEnv *env, jclass clazz, jint width, jint heigth, jint fps, jint bitrate) {
     if (videoEncoder) {
-        videoEncoder->setVideoEncInfo(width, heigth, fps, bitrate);
+        videoEncoder->setVideoEncInfo(width, heigth, fps, bitrate, 1);
     }
 }
 
@@ -124,32 +171,10 @@ static void RTMPX264Jni_native_start
     // 设置状态
     rtmpStatus = RtmpStatus::START;
     // 建立连接
-    const char *url = env->GetStringUTFChars(path, nullptr);
-    int ret = RtmpWrap::connect(url);
-    env->ReleaseStringUTFChars(path, url);
-    if (!ret) {
-        // 连接失败
-        MyLog::d("RtmpWrap::connect failed");
-        return;
-    }
-    // 初始化包队列
-    createBlockingQueue(&packets);
-    // 循环取出队列中的包
-    while (rtmpStatus == RtmpStatus::START) {
-        RTMPPacket *packet = nullptr;
-        packets->pop(packet);
-        if (!packet) {
-            continue;
-        }
-        // 给每个包设置流Id
-        packet->m_nInfoField2 = RtmpWrap::getRtmpStreamId();
-        // 加入rtmp_dump自带的发送队列发送
-        ret = RtmpWrap::sendVideo(*packet);
-        if (!ret) {
-            MyLog::e("%s %s", __func__, "sendVideo failed");
-            break;
-        }
-    }
+    jsize length = env->GetStringLength(path);
+    char *url = static_cast<char *>(calloc(length + 1, sizeof(char)));
+    env->GetStringUTFRegion(path, 0, length, url);
+    pthread_create(&pid, nullptr, RTMPX264_thread, (void *) url);
 }
 
 static void RTMPX264Jni_native_pushVideo
@@ -169,11 +194,11 @@ static void RTMPX264Jni_native_stop
         (JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::STOP;
     // 销毁队列
-    if (packets) {
-        packets->setWork(0);
-        packets->clear();
-        delete packets;
-        packets = nullptr;
+    if (globalPackets) {
+        globalPackets->setWork(0);
+        globalPackets->clear();
+        delete globalPackets;
+        globalPackets = nullptr;
     }
 
     RtmpWrap::destroy();

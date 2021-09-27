@@ -37,12 +37,13 @@ public:
 
     /**
      * 设置编码器参数
-     * @param width     宽
-     * @param height    高
-     * @param fps       帧率
-     * @param bitrate   码率
+     * @param width         宽
+     * @param height        高
+     * @param fps           帧率
+     * @param bitrate       码率
+     * @param repeatHeaders 是否在每个keframe前面加上SPS和PPS
      */
-    void setVideoEncInfo(int width, int height, int fps, int bitrate);
+    void setVideoEncInfo(int width, int height, int fps, int bitrate, int repeatHeaders = 0);
 
     /**
      * 设置回调函数
@@ -73,6 +74,8 @@ private:
     int mBitrate;
     int ySize;
     int uvSize;
+    int mRepeatHeaders = 0;
+    // 是否是编码的第一帧
     int isFirstEncodeFrame;
     VideoEncoderCallback mVideoEncodeCallback = nullptr;
     ErrorCallback mErrorCallback = nullptr;

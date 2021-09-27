@@ -27,4 +27,9 @@ namespace HWUtils {
         strncpy(ret, input + lastSigIndex + 1, retLen);
         return ret;
     }
+
+    int parseHexNaluType(int hexNaluValue) {
+        int flag = 11100000;
+        return hexNaluValue &= ~flag;
+    }
 }
