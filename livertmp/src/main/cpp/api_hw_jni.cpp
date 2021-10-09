@@ -122,7 +122,7 @@ static void *RTMPX264_thread(void *args) {
     const char *url = static_cast<const char *>(args);
     int ret = RtmpWrap::connect(url);
     free((void *) url);
-    url= nullptr;
+    url = nullptr;
     if (!ret) {
         // 连接失败
         MyLog::d("RtmpWrap::connect failed");
@@ -174,6 +174,7 @@ static void RTMPX264Jni_native_start
     jsize length = env->GetStringLength(path);
     char *url = static_cast<char *>(calloc(length + 1, sizeof(char)));
     env->GetStringUTFRegion(path, 0, length, url);
+    // 创建工作线程
     pthread_create(&pid, nullptr, RTMPX264_thread, (void *) url);
 }
 
@@ -190,13 +191,17 @@ static void RTMPX264Jni_native_pushVideo
     env->ReleaseByteArrayElements(yuvData, byte, JNI_ABORT);
 }
 
-static void RTMPX264Jni_native_stop
-        (JNIEnv *env, jclass clazz) {
+static void RTMPX264Jni_native_stop(JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::STOP;
-    // 销毁队列
+    // 销毁工作线程
     if (globalPackets) {
+        // setWork函数可以释放锁，否则线程是阻塞的
         globalPackets->setWork(0);
         globalPackets->clear();
+    }
+    pthread_join(pid, nullptr);
+    // 销毁队列
+    if (globalPackets) {
         delete globalPackets;
         globalPackets = nullptr;
     }

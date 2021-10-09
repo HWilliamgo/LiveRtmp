@@ -35,7 +35,7 @@ add_library(
         hw-rtmp
         SHARED
         ${myCore}
-        rtmp_jni.cpp
+        api_hw_jni.cpp
 )
 
 #连接
