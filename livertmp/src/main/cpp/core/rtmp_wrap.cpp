@@ -12,6 +12,7 @@ namespace {
     const int INVALIDE_DEF_RTMP_STREAM_ID = -1;
     RtmpWrap::Live *globalLive = nullptr;
     uint32_t startTime = 0;
+    // 日志TAG
     const char *TAG_LIBRTMP = "LIBRTMP";
 
     /**
@@ -33,11 +34,13 @@ namespace {
         if (Buf[0] != 0 || Buf[1] != 0 || Buf[2] != 0 || Buf[3] != 1) return 0;//0x00000001?
         else return 1;
     }
-}
-// </editor-fold>
 
-namespace RtmpWrap {
-    // 是否是SPS帧
+    /**
+     *
+     * @param buf
+     * @param len
+     * @return
+     */
     bool isFrameSPS(const int8_t *buf, int len) {
         if (len < 4) {
             return false;
@@ -79,6 +82,7 @@ namespace RtmpWrap {
         }
     }
 }
+// </editor-fold>
 
 // <editor-fold defaultstate="collapsed" desc="初始化sps pps">
 namespace {
@@ -280,17 +284,17 @@ static void freeGlobalLive() {
 }
 // </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="回调函数">
+// rtmp日志回调
 static void My_RTMP_LogCallback(int level, const char *fmt, va_list args) {
     char *msg_to_print = nullptr;
     vasprintf(&msg_to_print, fmt, args);
     MyLog::dTag(TAG_LIBRTMP, msg_to_print);
     delete msg_to_print;
 }
+// </editor-fold>
 
-//////////////////////////////
-////        API
-/////////////////////////////
-
+// <editor-fold defaultstate="collapsed" desc="API">
 int RtmpWrap::connect(const char *url) {
     RTMP_LogSetCallback(My_RTMP_LogCallback);
     //实例化
@@ -413,3 +417,4 @@ void RtmpWrap::destroy() {
         freeGlobalLive();
     }
 }
+// </editor-fold>
