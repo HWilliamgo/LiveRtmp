@@ -30,6 +30,10 @@
 #include "pthread.h"
 #include "malloc.h"
 
+// <editor-fold defaultstate="collapsed" desc="static 函数预声明">
+static void X264Jni_encodeCallback(char *encodedData, int size);
+// </editor-fold>
+
 // <editor-fold defaultstate="collapsed" desc="全局变量定义">
 namespace {
     /**** 字符串常量定义 ****/
@@ -107,10 +111,15 @@ static void onVideoEncoderCallback(char *encodedData, int size) {
     if (globalPackets) {
         RTMPPacket *packet = nullptr;
         RtmpWrap::createRtmpPacket(&packet, reinterpret_cast<int8_t *>(encodedData), size);
+        X264Jni_encodeCallback(encodedData, size);
         if (packet) {
             globalPackets->push(packet);
         }
     }
+}
+
+static void onVideoEncoderLog(const char *msg) {
+    MyLog::dTag("x264log", msg);
 }
 
 /**
@@ -157,6 +166,7 @@ static void RTMPX264Jni_native_init(JNIEnv *env, jclass clazz) {
     MyLog::v(__func__);
     videoEncoder = new VideoEncoder();
     videoEncoder->setVideoEncodeCallback(&onVideoEncoderCallback);
+    VideoEncoder::setLogger(onVideoEncoderLog);
 }
 
 static void RTMPX264Jni_native_setVideoEncoderInfo

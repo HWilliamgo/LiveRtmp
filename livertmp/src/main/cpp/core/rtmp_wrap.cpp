@@ -12,13 +12,39 @@ namespace {
     const int INVALIDE_DEF_RTMP_STREAM_ID = -1;
     RtmpWrap::Live *globalLive = nullptr;
     uint32_t startTime = 0;
+    const char *TAG_LIBRTMP = "LIBRTMP";
+
+    /**
+     * 找到以 0x000001 开头的 nalu
+     * @param Buf nalu数据
+     * @return 1表示是，0表示不是
+     */
+    int findStartCode2(const int8_t *Buf) {
+        if (Buf[0] != 0 || Buf[1] != 0 || Buf[2] != 1) return 0; //0x000001?
+        else return 1;
+    }
+
+    /**
+     * 找到以 0x00000001 开头的 nalu
+     * @param Buf nalu数据
+     * @return 1表示是，0表示不是
+     */
+    int findStartCode3(const int8_t *Buf) {
+        if (Buf[0] != 0 || Buf[1] != 0 || Buf[2] != 0 || Buf[3] != 1) return 0;//0x00000001?
+        else return 1;
+    }
 }
 // </editor-fold>
 
 namespace RtmpWrap {
     // 是否是SPS帧
-    bool isFrameSPS(const int8_t *buf) {
-        if (buf) {
+    bool isFrameSPS(const int8_t *buf, int len) {
+        if (len < 4) {
+            return false;
+        }
+        if (findStartCode2(buf)) {
+            return HWUtils::parseHexNaluType(buf[3]) == HWUtils::nal_unit_type_e::NAL_SPS;
+        } else if (findStartCode3(buf)) {
             return HWUtils::parseHexNaluType(buf[4]) == HWUtils::nal_unit_type_e::NAL_SPS;
         } else {
             return false;
@@ -26,18 +52,28 @@ namespace RtmpWrap {
     }
 
     // 是否是PPS帧
-    bool isFramePPS(const int8_t *buf) {
-        if (buf) {
-            return HWUtils::parseHexNaluType(buf[4] == HWUtils::nal_unit_type_e::NAL_PPS);
+    bool isFramePPS(const int8_t *buf, int len) {
+        if (len < 4) {
+            return false;
+        }
+        if (findStartCode2(buf)) {
+            return HWUtils::parseHexNaluType(buf[3]) == HWUtils::nal_unit_type_e::NAL_PPS;
+        } else if (findStartCode3(buf)) {
+            return HWUtils::parseHexNaluType(buf[4]) == HWUtils::nal_unit_type_e::NAL_PPS;
         } else {
             return false;
         }
     }
 
     // 是否是IDR帧
-    bool isFrameIDR(const int8_t *buf) {
-        if (buf) {
-            return HWUtils::parseHexNaluType(buf[4] == HWUtils::nal_unit_type_e::NAL_SLICE_IDR);
+    bool isFrameIDR(const int8_t *buf, int len) {
+        if (len < 4) {
+            return false;
+        }
+        if (findStartCode2(buf)) {
+            return HWUtils::parseHexNaluType(buf[3]) == HWUtils::nal_unit_type_e::NAL_SLICE_IDR;
+        } else if (findStartCode3(buf)) {
+            return HWUtils::parseHexNaluType(buf[4]) == HWUtils::nal_unit_type_e::NAL_SLICE_IDR;
         } else {
             return false;
         }
@@ -171,7 +207,14 @@ static RTMPPacket *createVideoPackage(RtmpWrap::Live *live) {
 }
 
 static RTMPPacket *createVideoPackage(int8_t *buf, int len, const long tms, RtmpWrap::Live *live) {
-    buf += 4;
+    if (findStartCode2(buf)) {
+        buf += 3;
+    } else if (findStartCode3(buf)) {
+        buf += 4;
+    } else {
+        MyLog::eTag(TAG_LIBRTMP, "createVideoPackage -> find no annexB anlu header");
+        return nullptr;
+    }
 //长度
     RTMPPacket *packet = (RTMPPacket *) malloc(sizeof(RTMPPacket));
     int body_size = len + 9;
@@ -240,7 +283,7 @@ static void freeGlobalLive() {
 static void My_RTMP_LogCallback(int level, const char *fmt, va_list args) {
     char *msg_to_print = nullptr;
     vasprintf(&msg_to_print, fmt, args);
-    MyLog::dTag(HWUtils::getFileNameFromPath(__FILE__), msg_to_print);
+    MyLog::dTag(TAG_LIBRTMP, msg_to_print);
     delete msg_to_print;
 }
 
@@ -289,7 +332,7 @@ int RtmpWrap::connect(const char *url) {
 //传递第一帧      00 00 00 01 67 64 00 28ACB402201E3CBCA41408081B4284D4  0000000168 EE 06 F2 C0
 int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
     int ret = 0;
-    if (isFrameSPS(buf)) {
+    if (isFrameSPS(buf, len)) {
 //        缓存sps 和pps 到全局变量 不需要推流
         if (globalLive && (!globalLive->pps || !globalLive->sps)) {
 //缓存 没有推流
@@ -298,7 +341,7 @@ int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
         return ret;
     }
 //    I帧
-    if (isFrameIDR(buf)) {//关键帧
+    if (isFrameIDR(buf, len)) {//关键帧
 //         推两个
 //sps 和 ppps 的paclet  发送sps pps
         RTMPPacket *packet = createVideoPackage(globalLive);
@@ -307,7 +350,7 @@ int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
         }
 //        发送I帧
     }
-//    两个   I帧  0x17  B P 0x27
+//    两个   I帧  0x17  2B P 0x7
     RTMPPacket *packet2 = createVideoPackage(buf, len, tms, globalLive);
     if (packet2) {
         ret = sendPacket(packet2);
@@ -315,20 +358,33 @@ int RtmpWrap::sendVideo(int8_t *buf, int len, long tms) {
     return ret;
 }
 
+static bool encounterSPS = false;
+
 void RtmpWrap::createRtmpPacket(RTMPPacket **packet, int8_t *buf, int len) {
     if (!globalLive) {
         return;
     }
+    if (encounterSPS) {
+        encounterSPS = false;
+        MyLog::dTag(TAG_LIBRTMP, "PPS %x%x%x%x%x", buf[0], buf[1], buf[2], buf[3], buf[4]);
+    }
     // 初始化sps和pps
-    if (isFrameSPS(buf)) {
+    if (isFrameSPS(buf, len)) {
+        MyLog::dTag(TAG_LIBRTMP, "SPS %x%x%x%x%x", buf[0], buf[1], buf[2], buf[3], buf[4]);
+        encounterSPS = true;
+        MyLog::dTag(TAG_LIBRTMP, "遇到SPS");
         if (!globalLive->sps) {
             initSPS(buf, len, globalLive);
+            MyLog::dTag(TAG_LIBRTMP, "初始化SPS");
         }
-    } else if (isFrameIDR(buf)) {
+    } else if (isFramePPS(buf, len)) {
+        MyLog::dTag(TAG_LIBRTMP, "遇到PPS");
         if (!globalLive->pps) {
             initPPS(buf, len, globalLive);
+            MyLog::dTag(TAG_LIBRTMP, "初始化PPS");
         }
         *packet = createVideoPackage(globalLive);
+        MyLog::dTag(TAG_LIBRTMP, "发送SPS和PPS");
     } else {
         *packet = createVideoPackage(buf, len, RTMP_GetTime() - startTime, globalLive);
     }

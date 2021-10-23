@@ -30,6 +30,9 @@ namespace MyLog {
         if (!log) {
             return;
         }
+        if (!msg) {
+            return;
+        }
         va_list args;
         va_start(args, msg);
         char *msg_to_print = nullptr;
@@ -42,6 +45,9 @@ namespace MyLog {
 
     void d(const char *msg, ...) {
         if (!log) {
+            return;
+        }
+        if (!msg) {
             return;
         }
         va_list args;
@@ -58,6 +64,9 @@ namespace MyLog {
         if (!log) {
             return;
         }
+        if (!msg) {
+            return;
+        }
         va_list args;
         va_start(args, msg);
         char *msg_to_print = nullptr;
@@ -70,6 +79,9 @@ namespace MyLog {
 
     void w(const char *msg, ...) {
         if (!log) {
+            return;
+        }
+        if (!msg) {
             return;
         }
         va_list args;
@@ -86,6 +98,9 @@ namespace MyLog {
         if (!log) {
             return;
         }
+        if (!msg) {
+            return;
+        }
         va_list args;
         va_start(args, msg);
         char *msg_to_print = nullptr;
@@ -98,6 +113,9 @@ namespace MyLog {
 
     void vTag(const char *tag, const char *msg, ...) {
         if (!log) {
+            return;
+        }
+        if (!msg) {
             return;
         }
         va_list args;
@@ -114,6 +132,9 @@ namespace MyLog {
         if (!log) {
             return;
         }
+        if (!msg) {
+            return;
+        }
         va_list args;
         va_start(args, msg);
         char *msg_to_print = nullptr;
@@ -126,6 +147,9 @@ namespace MyLog {
 
     void iTag(const char *tag, const char *msg, ...) {
         if (!log) {
+            return;
+        }
+        if (!msg) {
             return;
         }
         va_list args;
@@ -142,6 +166,9 @@ namespace MyLog {
         if (!log) {
             return;
         }
+        if (!msg) {
+            return;
+        }
         va_list args;
         va_start(args, msg);
         char *msg_to_print = nullptr;
@@ -154,6 +181,9 @@ namespace MyLog {
 
     void eTag(const char *tag, const char *msg, ...) {
         if (!log) {
+            return;
+        }
+        if (!msg) {
             return;
         }
         va_list args;
