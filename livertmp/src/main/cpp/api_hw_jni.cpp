@@ -111,7 +111,8 @@ static void onVideoEncoderCallback(char *encodedData, int size) {
     if (globalPackets) {
         RTMPPacket *packet = nullptr;
         RtmpWrap::createRtmpPacket(&packet, reinterpret_cast<int8_t *>(encodedData), size);
-        X264Jni_encodeCallback(encodedData, size);
+        // fixme 此处不注释的话将会引发崩溃，崩溃原因是多线程访问了JNIEnv变量，这是虚拟机不允许的。需要修复
+        // X264Jni_encodeCallback(encodedData, size);
         if (packet) {
             globalPackets->push(packet);
         }
