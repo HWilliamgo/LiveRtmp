@@ -1,4 +1,7 @@
+# cmake版本定义
 cmake_minimum_required(VERSION 3.4.1)
+
+# 调试日志
 message("构建类型：${CMAKE_BUILD_TYPE}")
 message("构建目录：${CMAKE_SOURCE_DIR}")
 
@@ -18,11 +21,22 @@ set_target_properties(
         IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/x264/lib/${ANDROID_ABI}/libx264.a
 )
 
-aux_source_directory(core myCore)
+# faac库
+# 配置同x264静态库
+add_library(myfaac
+        STATIC
+        IMPORTED)
+set_target_properties(myfaac
+        PROPERTIES
+        IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/faac/lib/${ANDROID_ABI}/libfaac.a)
+
 #核心逻辑库
+aux_source_directory(core myCore)
+
 
 #头文件
 include_directories(
+        ${CMAKE_SOURCE_DIR}/faac/include
         ${CMAKE_SOURCE_DIR}/x264/include
         ${CMAKE_SOURCE_DIR}/core/include
         ${CMAKE_SOURCE_DIR}/log/include
@@ -43,4 +57,5 @@ target_link_libraries(
         hw-rtmp
         rtmp
         myLog
-        myx264)
+        myx264
+        myfaac)

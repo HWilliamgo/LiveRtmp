@@ -42,12 +42,20 @@ namespace RtmpWrap {
     int sendVideo(RTMPPacket &packet);
 
     /**
-     * 创建rtmp包
+     * 创建视频rtmp包
      * @param packet 包
      * @param buf    编码数据
      * @param len    数据长度
      */
     void createRtmpPacket(RTMPPacket **packet, int8_t *buf, int len);
+
+    /**
+     * 创建音频rtmp包
+     * @param packet 包
+     * @param buf    编码数据
+     * @param len    数据长度
+     */
+    void createAudioRtmpPacket(RTMPPacket **packet, int8_t *buf, int len, bool isHead);
 
     /**
      * 获取RTMP流Id

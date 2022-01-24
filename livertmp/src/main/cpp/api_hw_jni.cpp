@@ -25,6 +25,7 @@
 #include "log_abs.h"
 #include "x264.h"
 #include "VideoEncoder.h"
+#include "AudioEncoder.h"
 #include "safe_queue.h"
 #include "hwutil.h"
 #include "pthread.h"
@@ -38,17 +39,22 @@ static void X264Jni_encodeCallback(char *encodedData, int size);
 namespace {
     /**** 字符串常量定义 ****/
     const char *TAG = "LiveRtmp";
+
+    // JNI Java映射类路径
     const char *CLASS_RMP_JNI = "com/hwilliamgo/livertmp/jni/RTMPJni";
     const char *CLASS_X264_JNI = "com/hwilliamgo/livertmp/jni/X264Jni";
     const char *CLASS_RTMP_X264_JNI = "com/hwilliamgo/livertmp/jni/RTMPX264Jni";
+    const char *CLASS_FAAC_JNI = "com/hwilliamgo/livertmp/jni/FaacJni";
 
     /**** java类定义 ****/
     jclass jni_class_rtmp = nullptr;
     jclass jni_class_x264 = nullptr;
     jclass jni_class_rtmp_x264 = nullptr;
+    jclass jni_class_faac = nullptr;
 
     /**** 引擎定义 ****/
     VideoEncoder *videoEncoder = nullptr;
+    AudioEncoder *audioEncoder = nullptr;
 
     JNIEnv *jniEnv = nullptr;
     /**
@@ -119,6 +125,26 @@ static void onVideoEncoderCallback(char *encodedData, int size) {
     }
 }
 
+static void onAudioEncoderCallback(unsigned char *encodedData, int size, bool isHead) {
+    if (isHead) {
+        if (globalPackets) {
+            MyLog::d("globalPackets exist");
+        } else {
+            MyLog::d("globalPackets is null!");
+        }
+    }
+    if (globalPackets) {
+        RTMPPacket *packet = nullptr;
+        RtmpWrap::createAudioRtmpPacket(&packet,
+                                        reinterpret_cast<int8_t *>(encodedData),
+                                        size,
+                                        isHead);
+        if (packet) {
+            globalPackets->push(packet);
+        }
+    }
+}
+
 static void onVideoEncoderLog(const char *msg) {
     MyLog::dTag("x264log", msg);
 }
@@ -138,8 +164,8 @@ static void *RTMPX264_thread(void *args) {
         MyLog::d("RtmpWrap::connect failed");
         return nullptr;
     }
-    // 初始化包队列
-    createBlockingQueue(&globalPackets);
+//    // 初始化包队列
+//    createBlockingQueue(&globalPackets);
     // 循环取出队列中的包
     while (rtmpStatus == RtmpStatus::START) {
         RTMPPacket *packet = nullptr;
@@ -153,6 +179,9 @@ static void *RTMPX264_thread(void *args) {
         packet->m_nInfoField2 = RtmpWrap::getRtmpStreamId();
         // 加入rtmp_dump自带的发送队列发送
         ret = RtmpWrap::sendVideo(*packet);
+        if (ret) {
+            MyLog::d("RTMPX264_thread rtmp包发送成功");
+        }
         if (!ret) {
             MyLog::e("%s %s", __func__, "sendVideo failed");
             break;
@@ -165,15 +194,31 @@ static void RTMPX264Jni_native_init(JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::INIT;
     MyLog::init_log(LogType::SimpleLog, TAG);
     MyLog::v(__func__);
+
+    // 初始化包队列
+    createBlockingQueue(&globalPackets);
+
+    // 初始化视频编码器
     videoEncoder = new VideoEncoder();
     videoEncoder->setVideoEncodeCallback(&onVideoEncoderCallback);
     VideoEncoder::setLogger(onVideoEncoderLog);
+
+    // 初始化音频编码器
+    audioEncoder = new AudioEncoder();
+    audioEncoder->setAudioEncoderCallback(&onAudioEncoderCallback);
 }
 
 static void RTMPX264Jni_native_setVideoEncoderInfo
         (JNIEnv *env, jclass clazz, jint width, jint heigth, jint fps, jint bitrate) {
     if (videoEncoder) {
         videoEncoder->setVideoEncInfo(width, heigth, fps, bitrate, 1);
+    }
+}
+
+static void
+RTMPX264Jni_native_setAudioEncoderInfo(JNIEnv *env, jclass clazz, int sampleRate, int channels) {
+    if (audioEncoder) {
+        audioEncoder->setAudioEncoderInfo(sampleRate, channels);
     }
 }
 
@@ -202,6 +247,20 @@ static void RTMPX264Jni_native_pushVideo
     env->ReleaseByteArrayElements(yuvData, byte, JNI_ABORT);
 }
 
+
+static void RTMPX264Jni_natvie_pushAudio(JNIEnv *env, jclass clazz, jbyteArray pcmData) {
+    int length = env->GetArrayLength(pcmData);
+    int8_t *byte = env->GetByteArrayElements(pcmData, nullptr);
+    if (!byte) {
+        env->ReleaseByteArrayElements(pcmData, byte, JNI_ABORT);
+        return;
+    }
+    if (audioEncoder) {
+        audioEncoder->encode(reinterpret_cast<int32_t *>(byte), length);
+    }
+    env->ReleaseByteArrayElements(pcmData, byte, JNI_ABORT);
+}
+
 static void RTMPX264Jni_native_stop(JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::STOP;
     // 销毁工作线程
@@ -211,21 +270,27 @@ static void RTMPX264Jni_native_stop(JNIEnv *env, jclass clazz) {
         globalPackets->clear();
     }
     pthread_join(pid, nullptr);
-    // 销毁队列
-    if (globalPackets) {
-        delete globalPackets;
-        globalPackets = nullptr;
-    }
-
     RtmpWrap::destroy();
 }
 
 static void RTMPX264Jni_native_release
         (JNIEnv *env, jclass clazz) {
     rtmpStatus = RtmpStatus::DESTROY;
+
+    // 销毁队列
+    if (globalPackets) {
+        delete globalPackets;
+        globalPackets = nullptr;
+    }
+
+    // 释放编码器
     if (videoEncoder) {
         delete videoEncoder;
         videoEncoder = nullptr;
+    }
+    if (audioEncoder) {
+        delete audioEncoder;
+        audioEncoder = nullptr;
     }
 }
 // </editor-fold>
@@ -277,6 +342,21 @@ static void X264Jni_destroy(JNIEnv *env, jclass clazz) {
 }
 // </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="JNI函数定义-FAAC">
+static void FAACJni_initAudioEncoder(JNIEnv *env, jclass, int sampleRate, int channels) {
+
+}
+
+static void FAACJni_encodeAudio(JNIEnv *env, jclass, jbyteArray buffer, int len) {
+
+}
+
+static void FAACJni_destroy(JNIEnv *env, jclass) {
+
+}
+
+// </editor-fold>
+
 // <editor-fold defaultstate="collapsed" desc="动态加载jni函数">
 static JNINativeMethod g_methods_rtmp[] = {
         {"init",     "()V",                   (void *) RTMP_init},
@@ -293,10 +373,17 @@ static JNINativeMethod g_methods_x264[] = {
 static JNINativeMethod g_methods_rtmp_x264[] = {
         {"native_init",                "()V",                   (void *) RTMPX264Jni_native_init},
         {"native_setVideoEncoderInfo", "(IIII)V",               (void *) RTMPX264Jni_native_setVideoEncoderInfo},
+        {"native_setAudioEncoderInfo", "(II)V",                 (void *) RTMPX264Jni_native_setAudioEncoderInfo},
         {"native_start",               "(Ljava/lang/String;)V", (void *) RTMPX264Jni_native_start},
         {"native_pushVideo",           "([B)V",                 (void *) RTMPX264Jni_native_pushVideo},
+        {"natvie_pushAudio",           "([B)V",                 (void *) RTMPX264Jni_natvie_pushAudio},
         {"native_stop",                "()V",                   (void *) RTMPX264Jni_native_stop},
         {"native_release",             "()V",                   (void *) RTMPX264Jni_native_release}
+};
+static JNINativeMethod g_method_faac[] = {
+        {"initAudioEncoder", "(II)V",  (void *) FAACJni_initAudioEncoder},
+        {"encodeAudio",      "([BI)V", (void *) FAACJni_encodeAudio},
+        {"destroy",          "()V",    (void *) FAACJni_destroy}
 };
 
 static void registerJniMethod(JNIEnv *env,
@@ -322,6 +409,8 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                       g_methods_x264, NELEM(g_methods_x264));
     registerJniMethod(env, &jni_class_rtmp_x264, CLASS_RTMP_X264_JNI,
                       g_methods_rtmp_x264, NELEM(g_methods_rtmp_x264));
+    registerJniMethod(env, &jni_class_faac, CLASS_FAAC_JNI,
+                      g_method_faac, NELEM(g_method_faac));
     jniEnv = env;
     return JNI_VERSION_1_4;
 }

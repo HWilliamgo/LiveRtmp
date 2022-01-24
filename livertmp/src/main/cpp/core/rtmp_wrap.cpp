@@ -394,6 +394,25 @@ void RtmpWrap::createRtmpPacket(RTMPPacket **packet, int8_t *buf, int len) {
     }
 }
 
+void RtmpWrap::createAudioRtmpPacket(RTMPPacket **packet, int8_t *buf, int len, bool isHead) {
+    *packet = new RTMPPacket();
+    RTMPPacket_Alloc(*packet, len + 2);
+    RTMPPacket *p = *packet;
+    p->m_body[0] = 0xAF;
+    if (isHead) {
+        p->m_body[1] = 0x00;
+    } else {
+        p->m_body[1] = 0x01;
+    }
+    memcpy(&p->m_body[2], buf, len);
+    p->m_hasAbsTimestamp = 0;
+    p->m_nBodySize = len + 2;
+    p->m_nTimeStamp = RTMP_GetTime() - startTime;
+    p->m_packetType = RTMP_PACKET_TYPE_AUDIO;
+    p->m_nChannel = 0x11;
+    p->m_headerType = RTMP_PACKET_SIZE_LARGE;
+}
+
 int RtmpWrap::sendVideo(RTMPPacket &packet) {
     return sendPacket(&packet);
 }

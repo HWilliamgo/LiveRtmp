@@ -26,6 +26,14 @@ public class RTMPX264Jni {
     public static native void native_setVideoEncoderInfo(int width, int height, int fps, int bitrate);
 
     /**
+     * 设置音频编码器信息
+     *
+     * @param sampleRate 采样率
+     * @param channel    声道数
+     */
+    public static native void native_setAudioEncoderInfo(int sampleRate, int channel);
+
+    /**
      * 开始
      *
      * @param path 服务器地址
@@ -38,6 +46,13 @@ public class RTMPX264Jni {
      * @param yuvData 裸yuv数据
      */
     public static native void native_pushVideo(byte[] yuvData);
+
+    /**
+     * 发送音频数据
+     *
+     * @param pcmData 裸pcm数据
+     */
+    public static native void natvie_pushAudio(byte[] pcmData);
 
     /**
      * 停止
