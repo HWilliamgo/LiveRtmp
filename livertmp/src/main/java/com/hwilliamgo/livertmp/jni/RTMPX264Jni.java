@@ -30,8 +30,9 @@ public class RTMPX264Jni {
      *
      * @param sampleRate 采样率
      * @param channel    声道数
+     * @return 编码器输入buffer大小
      */
-    public static native void native_setAudioEncoderInfo(int sampleRate, int channel);
+    public static native int native_setAudioEncoderInfo(int sampleRate, int channel);
 
     /**
      * 开始

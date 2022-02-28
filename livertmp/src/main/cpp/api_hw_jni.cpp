@@ -215,10 +215,13 @@ static void RTMPX264Jni_native_setVideoEncoderInfo
     }
 }
 
-static void
+static jint
 RTMPX264Jni_native_setAudioEncoderInfo(JNIEnv *env, jclass clazz, int sampleRate, int channels) {
     if (audioEncoder) {
         audioEncoder->setAudioEncoderInfo(sampleRate, channels);
+        return (jint) audioEncoder->getInputByteNum();
+    } else {
+        return -1;
     }
 }
 
@@ -373,7 +376,7 @@ static JNINativeMethod g_methods_x264[] = {
 static JNINativeMethod g_methods_rtmp_x264[] = {
         {"native_init",                "()V",                   (void *) RTMPX264Jni_native_init},
         {"native_setVideoEncoderInfo", "(IIII)V",               (void *) RTMPX264Jni_native_setVideoEncoderInfo},
-        {"native_setAudioEncoderInfo", "(II)V",                 (void *) RTMPX264Jni_native_setAudioEncoderInfo},
+        {"native_setAudioEncoderInfo", "(II)I",                 (void *) RTMPX264Jni_native_setAudioEncoderInfo},
         {"native_start",               "(Ljava/lang/String;)V", (void *) RTMPX264Jni_native_start},
         {"native_pushVideo",           "([B)V",                 (void *) RTMPX264Jni_native_pushVideo},
         {"natvie_pushAudio",           "([B)V",                 (void *) RTMPX264Jni_natvie_pushAudio},

@@ -47,13 +47,16 @@ void AudioEncoder::encode(int32_t *data, int len) {
 
     if (isFirstEncodeFrame) {
         isFirstEncodeFrame = 0;
-        u_char *headBuf;
+        u_char *headBuf = nullptr;
         u_long headLen;
         faacEncGetDecoderSpecificInfo(encoder, &headBuf, &headLen);
         if (encodeCallback) {
             encodeCallback(headBuf, headLen, true);
         }
-        delete headBuf;
+        if (headBuf) {
+            delete headBuf;
+            headBuf = nullptr;
+        }
     }
 
     int byteLen = faacEncEncode(encoder, data, len, outputBuffer, maxOutputBytes);
