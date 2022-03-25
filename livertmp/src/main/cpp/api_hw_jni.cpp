@@ -251,15 +251,15 @@ static void RTMPX264Jni_native_pushVideo
 }
 
 
-static void RTMPX264Jni_natvie_pushAudio(JNIEnv *env, jclass clazz, jbyteArray pcmData) {
-    int length = env->GetArrayLength(pcmData);
+static void
+RTMPX264Jni_natvie_pushAudio(JNIEnv *env, jclass clazz, jbyteArray pcmData, jint end, jint length) {
     int8_t *byte = env->GetByteArrayElements(pcmData, nullptr);
     if (!byte) {
         env->ReleaseByteArrayElements(pcmData, byte, JNI_ABORT);
         return;
     }
     if (audioEncoder) {
-        audioEncoder->encode(reinterpret_cast<int32_t *>(byte), length);
+        audioEncoder->encode(reinterpret_cast<int32_t *>(byte), end);
     }
     env->ReleaseByteArrayElements(pcmData, byte, JNI_ABORT);
 }
@@ -379,7 +379,7 @@ static JNINativeMethod g_methods_rtmp_x264[] = {
         {"native_setAudioEncoderInfo", "(II)I",                 (void *) RTMPX264Jni_native_setAudioEncoderInfo},
         {"native_start",               "(Ljava/lang/String;)V", (void *) RTMPX264Jni_native_start},
         {"native_pushVideo",           "([B)V",                 (void *) RTMPX264Jni_native_pushVideo},
-        {"natvie_pushAudio",           "([B)V",                 (void *) RTMPX264Jni_natvie_pushAudio},
+        {"natvie_pushAudio",           "([BII)V",               (void *) RTMPX264Jni_natvie_pushAudio},
         {"native_stop",                "()V",                   (void *) RTMPX264Jni_native_stop},
         {"native_release",             "()V",                   (void *) RTMPX264Jni_native_release}
 };

@@ -52,8 +52,10 @@ public class RTMPX264Jni {
      * 发送音频数据
      *
      * @param pcmData 裸pcm数据
+     * @param end     最后一位有效数据的下标
+     * @param length  数组长度
      */
-    public static native void natvie_pushAudio(byte[] pcmData);
+    public static native void natvie_pushAudio(byte[] pcmData, int end, int length);
 
     /**
      * 停止
